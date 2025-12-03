@@ -1,5 +1,5 @@
 // ============================================================================
-// IMPORTS: 3 Levels Up (Correct for your install)
+// IMPORTS
 // ============================================================================
 import {
     saveSettingsDebounced,
@@ -13,32 +13,27 @@ import {
 } from '../../../extensions.js';
 
 // ============================================================================
-// SETUP: Get Context & Tools
+// SETUP
 // ============================================================================
 const context = SillyTavern.getContext();
 const eventSource = context.eventSource;
 const event_types = context.event_types;
-// We grab the template loader from context to load settings.html safely
-const renderExtensionTemplateAsync = context.renderExtensionTemplateAsync; 
-
-// ============================================================================
-// CONSTANTS & CONFIG
-// ============================================================================
+const renderExtensionTemplateAsync = context.renderExtensionTemplateAsync;
 
 const extensionName = 'memory-summarize';
-const extensionPath = 'third-party/memory-summarize'; // Based on your log
-const MAX_SUMMARY_WORDS = 350;
+const extensionPath = 'third-party/memory-summarize';
 
-// Default settings
+// Clean Defaults (Matching HTML IDs now!)
 const defaultSettings = {
-    enabled: true,           // Maps to #auto_summarize
-    messageThreshold: 20,    // Maps to #summarization_delay
+    auto_summarize: true,
+    message_threshold: 20,    // "Update Frequency"
+    max_summary_words: 350,   // "Max Summary Words"
     master_summary: "",
-    debugMode: true
+    debugMode: false
 };
 
 // ============================================================================
-// HELPER: HTML CLEANER
+// HELPER: CLEANER
 // ============================================================================
 function cleanTextForSummary(text) {
     if (!text) return "";
@@ -52,21 +47,20 @@ function cleanTextForSummary(text) {
 }
 
 // ============================================================================
-// CORE LOGIC: ROLLING SUMMARY
+// CORE LOGIC
 // ============================================================================
 async function triggerRollingSummarize() {
     const chat = context.chat;
-    const threshold = extension_settings[extensionName].messageThreshold || 20;
+    
+    // DIRECT MAPPING - No more MacGyver tricks
+    const threshold = extension_settings[extensionName].message_threshold || 20;
+    const maxWords = extension_settings[extensionName].max_summary_words || 350;
 
-    // Safety: Need enough messages
     if (!chat || chat.length < threshold) return;
 
-    // Only grab the recent messages
+    // Only grab the recent messages based on threshold
     const recentMessages = chat.slice(-threshold);
-
-    let newEventsText = recentMessages.map(msg => {
-        return `${msg.name}: ${cleanTextForSummary(msg.mes)}`;
-    }).join('\n');
+    let newEventsText = recentMessages.map(msg => `${msg.name}: ${cleanTextForSummary(msg.mes)}`).join('\n');
 
     if (newEventsText.length < 50) return;
 
@@ -74,37 +68,25 @@ async function triggerRollingSummarize() {
 
     const prompt = `
     You are an expert Story Summarizer. Update the "Current Story Summary" to include the "New Events".
-    
-    [Current Story Summary]:
-    "${currentMemory}"
-
-    [New Events]:
-    "${newEventsText}"
-
+    [Current Story Summary]: "${currentMemory}"
+    [New Events]: "${newEventsText}"
     [INSTRUCTIONS]:
     - Rewrite the summary to be a seamless narrative.
     - Merge new events into the history.
-    - Drop very old, irrelevant details if needed.
-    - KEEP THE TOTAL LENGTH UNDER ${MAX_SUMMARY_WORDS} WORDS.
-    - Do not output any explanation, just the new summary text.
+    - KEEP THE TOTAL LENGTH UNDER ${maxWords} WORDS.
     `;
 
     console.log(`[${extensionName}] Generating Rolling Summary...`);
+    if(extension_settings[extensionName].debugMode) console.log(prompt);
 
     try {
-        const newSummary = await generateRaw(prompt, {
-            max_length: 500,
-            temperature: 0.7
-        });
+        const newSummary = await generateRaw(prompt, { max_length: 500, temperature: 0.7 });
 
         if (newSummary && newSummary.length > 10) {
             extension_settings[extensionName].master_summary = newSummary.trim();
             saveSettingsDebounced();
             console.log(`[${extensionName}] Memory Updated!`);
             toastr.success("Memory Updated", "Rolling Summary");
-            
-            // Update UI if open (Optional)
-            $('#qvink_memory_display').text(newSummary.trim());
         }
     } catch (e) {
         console.error(`[${extensionName}] Summarization Failed:`, e);
@@ -112,13 +94,33 @@ async function triggerRollingSummarize() {
 }
 
 // ============================================================================
+// API BRIDGE
+// ============================================================================
+const qvink_memory_api = {
+    getSettings: async () => {
+        return extension_settings[extensionName];
+    },
+    setSettings: async (newSettings) => {
+        Object.assign(extension_settings[extensionName], newSettings);
+        saveSettingsDebounced();
+        if (newSettings.debugMode !== undefined) {
+            console.log(`[${extensionName}] Debug Mode: ${newSettings.debugMode}`);
+        }
+    },
+    refreshMemory: async () => {
+        toastr.info("Force triggering summary...", "Memory");
+        await triggerRollingSummarize();
+    },
+    getContext: () => context
+};
+
+// ============================================================================
 // INTERCEPTOR
 // ============================================================================
 function memory_intercept_messages(chat, ...args) {
-    if (!extension_settings[extensionName]?.enabled) return;
+    if (!extension_settings[extensionName]?.auto_summarize) return;
 
     const memory = extension_settings[extensionName].master_summary;
-
     if (memory && memory.length > 5) {
         const memoryBlock = {
             name: "System",
@@ -128,30 +130,6 @@ function memory_intercept_messages(chat, ...args) {
         };
         chat.unshift(memoryBlock);
     }
-}
-
-// ============================================================================
-// UI BINDING (Connects HTML inputs to Settings)
-// ============================================================================
-function bindSettingsUI() {
-    // 1. Connect "Auto Summarize" Checkbox
-    const $enableBox = $('#auto_summarize');
-    $enableBox.prop('checked', extension_settings[extensionName].enabled);
-    $enableBox.on('change', () => {
-        extension_settings[extensionName].enabled = $enableBox.prop('checked');
-        saveSettingsDebounced();
-    });
-
-    // 2. Connect "Message Lag" (Threshold) Input
-    const $thresholdInput = $('#summarization_delay'); // Reusing this input ID from your HTML
-    $thresholdInput.val(extension_settings[extensionName].messageThreshold);
-    $thresholdInput.on('change', () => {
-        const val = parseInt($thresholdInput.val());
-        if (!isNaN(val) && val > 0) {
-            extension_settings[extensionName].messageThreshold = val;
-            saveSettingsDebounced();
-        }
-    });
 }
 
 // ============================================================================
@@ -167,34 +145,34 @@ jQuery(async function () {
     }
     Object.assign(extension_settings[extensionName], defaultSettings, settings);
 
-    // 2. INJECT HTML UI (This is what we missed!)
+    // 2. EXPOSE API
+    window.qvink_memory = qvink_memory_api;
+
+    // 3. Inject HTML
     try {
-        // We use the path from your log: third-party/memory-summarize
         const settingsHtml = await renderExtensionTemplateAsync(extensionPath, 'settings');
         $('#extensions_settings').append(settingsHtml);
-        
-        // Bind the inputs so they actually work
-        bindSettingsUI();
-        
     } catch (e) {
-        console.error(`[${extensionName}] Failed to load settings.html:`, e);
+        console.error(`[${extensionName}] Failed to load HTML:`, e);
     }
 
-    // 3. Register Listeners
+    // 4. Listeners
     if (eventSource) {
         eventSource.on(event_types.MESSAGE_RECEIVED, async () => {
             const currentContext = SillyTavern.getContext();
             const msgCount = currentContext.chat.length;
-            const threshold = extension_settings[extensionName].messageThreshold;
-
+            
+            // USE THE NEW CLEAN VARIABLE NAME
+            const threshold = extension_settings[extensionName].message_threshold || 20;
+            
             if (msgCount > 0 && msgCount % threshold === 0) {
-                await triggerRollingSummarize();
+                if (extension_settings[extensionName].auto_summarize) {
+                    await triggerRollingSummarize();
+                }
             }
         });
     }
 
-    // 4. Expose for manifest
     window.memory_intercept_messages = memory_intercept_messages;
-
-    console.log(`[${extensionName}] Ready with UI. 🚀`);
+    console.log(`[${extensionName}] Ready. Clean Refactor. 🚀`);
 });

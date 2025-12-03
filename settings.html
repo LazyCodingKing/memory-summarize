@@ -1,4 +1,3 @@
-<!-- settings.html — Qvink Memory (headless-compatible) -->
 <div id="qvink_memory_settings" class="qvink_memory_settings_content">
   <div class="inline-drawer">
     <div class="inline-drawer-toggle inline-drawer-header">
@@ -14,31 +13,26 @@
         <hr>
         <div class="flex-container justifyspacebetween alignitemscenter">
           <button id="toggle_chat_memory" class="menu_button flex2"><span>Toggle Memory</span></button>
-          <button id="refresh_memory" class="menu_button fa-solid fa-sync margin0" title="Refresh memory state"></button>
+          <button id="refresh_memory" class="menu_button fa-solid fa-sync margin0" title="Force Update Now"></button>
         </div>
 
         <hr>
-        <h4 class="textAlignCenter">Summarization</h4>
+        <h4 class="textAlignCenter">Summarization Config</h4>
 
         <label class="checkbox_label">
           <input id="auto_summarize" type="checkbox" />
           <span>Auto Summarize</span>
         </label>
 
-        <label class="checkbox_label">
-          <input id="auto_summarize_on_send" type="checkbox" />
-          <span>Before Generation</span>
-        </label>
-
         <div class="flex-container justifyspacebetween alignitemscenter" style="margin-top:8px;">
-          <label style="display:flex;align-items:center;">
-            <span style="margin-right:.5em">Short-term limit</span>
-            <input id="short_term_context_limit" type="number" min="0" style="width:7em" />
+          <label style="display:flex;align-items:center;" title="How many messages to wait before summarizing again (e.g. 20)">
+            <span style="margin-right:.5em">Update Frequency</span>
+            <input id="message_threshold" type="number" min="1" placeholder="20" style="width:7em" />
           </label>
 
-          <label style="display:flex;align-items:center;">
-            <span style="margin-right:.5em">Long-term limit</span>
-            <input id="long_term_context_limit" type="number" min="0" style="width:7em" />
+          <label style="display:flex;align-items:center;" title="Maximum word count for the rolling summary">
+            <span style="margin-right:.5em">Max Summary Words</span>
+            <input id="max_summary_words" type="number" min="50" placeholder="350" style="width:7em" />
           </label>
         </div>
 
@@ -54,12 +48,7 @@
           <button id="revert_settings" class="menu_button">Revert</button>
           <button id="save_settings" class="menu_button">Save</button>
         </div>
-
         <hr>
-
-        <div style="font-size:0.9em;color:var(--muted-color,#666);margin-top:6px;">
-          This UI talks to window.qvink_memory (the extension runtime). If you prefer a tiny popup, use qvink_memory.openTinyUI().
-        </div>
       </div>
     </div>
   </div>
@@ -67,16 +56,13 @@
 
 <script>
 (function () {
-  // Robust wiring: wait for the qvink_memory API to be available.
-  // Poll for it up to ~5 seconds (50 attempts at 100ms).
   function safeById(id) { return document.getElementById(id); }
 
-  // Elements
+  // Elements (Updated IDs)
   const EL = {
     auto_summarize: safeById('auto_summarize'),
-    auto_summarize_on_send: safeById('auto_summarize_on_send'),
-    short_term_context_limit: safeById('short_term_context_limit'),
-    long_term_context_limit: safeById('long_term_context_limit'),
+    message_threshold: safeById('message_threshold'),      // WAS: short_term_context_limit
+    max_summary_words: safeById('max_summary_words'),      // WAS: long_term_context_limit
     debug_mode: safeById('debug_mode'),
     save_settings: safeById('save_settings'),
     revert_settings: safeById('revert_settings'),
@@ -84,118 +70,81 @@
     toggle_chat_memory: safeById('toggle_chat_memory')
   };
 
-  // default UI values in case settings API isn't available yet
+  // Default UI values
   const UI_DEFAULTS = {
-    auto_summarize: false,
-    auto_summarize_on_send: false,
-    short_term_context_limit: 2000,
-    long_term_context_limit: 8000,
+    auto_summarize: true,
+    message_threshold: 20,
+    max_summary_words: 350,
     debug_mode: false
   };
 
-  // populate UI from a settings object
+  // Populate UI from settings object
   function populateUI(settings = {}) {
     const s = Object.assign({}, UI_DEFAULTS, settings || {});
     if (EL.auto_summarize) EL.auto_summarize.checked = !!s.auto_summarize;
-    if (EL.auto_summarize_on_send) EL.auto_summarize_on_send.checked = !!s.auto_summarize_on_send;
-    if (EL.short_term_context_limit) EL.short_term_context_limit.value = s.short_term_context_limit ?? '';
-    if (EL.long_term_context_limit) EL.long_term_context_limit.value = s.long_term_context_limit ?? '';
+    if (EL.message_threshold) EL.message_threshold.value = s.message_threshold ?? 20;
+    if (EL.max_summary_words) EL.max_summary_words.value = s.max_summary_words ?? 350;
     if (EL.debug_mode) EL.debug_mode.checked = !!s.debug_mode;
   }
 
-  // read UI values to a settings object
+  // Read UI values to settings object
   function readUI() {
     return {
       auto_summarize: !!(EL.auto_summarize && EL.auto_summarize.checked),
-      auto_summarize_on_send: !!(EL.auto_summarize_on_send && EL.auto_summarize_on_send.checked),
-      short_term_context_limit: parseInt(EL.short_term_context_limit?.value || 0, 10) || 0,
-      long_term_context_limit: parseInt(EL.long_term_context_limit?.value || 0, 10) || 0,
+      message_threshold: parseInt(EL.message_threshold?.value || 20, 10),
+      max_summary_words: parseInt(EL.max_summary_words?.value || 350, 10),
       debug_mode: !!(EL.debug_mode && EL.debug_mode.checked)
     };
   }
 
-  // Wiring (attach UI listeners) - called once qvink_memory exists
+  // Wiring
   function wireToAPI(api) {
-    // get initial settings and populate
     api.getSettings().then(populateUI).catch(() => populateUI());
 
-    // Save button
     if (EL.save_settings) {
       EL.save_settings.addEventListener('click', async () => {
         const s = readUI();
         await api.setSettings(s);
-        if (s.debug_mode) console.log('qvink_memory: settings saved from UI', s);
+        if (s.debug_mode) console.log('[UI] Settings saved:', s);
       });
     }
 
-    // Revert - load defaults from API (we rely on the API's defaults if provided)
     if (EL.revert_settings) {
       EL.revert_settings.addEventListener('click', async () => {
-        // Attempt to re-load from API (which may hold default profile)
         const fresh = await api.getSettings().catch(() => null);
-        // If API returned null, use UI_DEFAULTS
         populateUI(fresh || UI_DEFAULTS);
       });
     }
 
-    // Live changes for important toggles (optional)
-    if (EL.auto_summarize) {
-      EL.auto_summarize.addEventListener('change', async () => {
-        const partial = { auto_summarize: !!EL.auto_summarize.checked };
-        await api.setSettings(partial);
-      });
-    }
-    if (EL.short_term_context_limit) {
-      EL.short_term_context_limit.addEventListener('change', async () => {
-        const val = parseInt(EL.short_term_context_limit.value || 0, 10) || 0;
-        await api.setSettings({ short_term_context_limit: val });
-      });
+    // Live Listeners for smoother UX
+    if (EL.message_threshold) {
+        EL.message_threshold.addEventListener('change', async () => {
+            await api.setSettings({ message_threshold: parseInt(EL.message_threshold.value) });
+        });
     }
 
-    // refresh memory / toggle memory buttons: call provided API hooks if present
     if (EL.refresh_memory) {
       EL.refresh_memory.addEventListener('click', () => {
         if (typeof api.refreshMemory === 'function') api.refreshMemory();
-        else if (api.getContext && api.getContext()) {
-          try { const ctx = api.getContext(); if (ctx && ctx.emit) ctx.emit('extension_request_refresh'); } catch(e) {}
-        }
-      });
-    }
-
-    if (EL.toggle_chat_memory) {
-      EL.toggle_chat_memory.addEventListener('click', () => {
-        // If there is a programmatic toggle, call it; otherwise flip a setting
-        if (typeof api.toggle === 'function') {
-          api.toggle('auto_summarize'); // sample toggle - adapt as needed
-        } else {
-          readUI(); // noop
-        }
       });
     }
   }
 
-  // Poll for qvink_memory API
+  // Poll for API
   let attempts = 0;
-  const maxAttempts = 50;
   const poll = setInterval(() => {
     attempts++;
     if (window.qvink_memory && typeof window.qvink_memory.getSettings === 'function') {
       clearInterval(poll);
-      try {
-        wireToAPI(window.qvink_memory);
-      } catch (e) { console.error('qvink_memory settings UI wiring failed:', e); }
+      wireToAPI(window.qvink_memory);
       return;
     }
-    if (attempts >= maxAttempts) {
+    if (attempts >= 50) {
       clearInterval(poll);
-      // Fallback: populate UI with defaults so settings.html is usable even offline
-      populateUI();
-      console.warn('qvink_memory: API not available; settings UI loaded with defaults.');
+      populateUI(); // Fallback
     }
   }, 100);
 
-  // Also populate quickly with defaults while waiting for API
   populateUI();
-
 })();
 </script>
