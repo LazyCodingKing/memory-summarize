@@ -1,286 +1,290 @@
 /**
  * Memory Summarize v2.0 - Main Extension File
- * Corrected for SillyTavern 1.14+ (2025)
- * Proper initialization using jQuery ready pattern
+ * Fixed & Merged for SillyTavern
  */
 
 // Get SillyTavern context API
-const { eventSource, event_types, callPopup, renderExtensionTemplateAsync, saveSettingsDebounced } = SillyTavern.getContext();
+const { eventSource, event_types, saveSettingsDebounced } = SillyTavern.getContext();
 const { extension_settings } = SillyTavern.getContext();
 
 // Extension metadata
 const extensionName = 'memory-summarize';
 const extensionFolderPath = `third-party/${extensionName}`;
 
-
 // Default settings
 const defaultSettings = {
-  enabled: true,
-  autoSummarize: true,
-  summarizeTiming: 'after_generation',
-  shortTermLimit: 2000,
-  longTermLimit: 4000,
-  messageThreshold: 50,
-  summaryPrompt: 'Summarize the following message concisely in 1-2 sentences:\n\n{{message}}',
-  summaryMaxTokens: 150,
-  summaryTemperature: 0.1,
-  useSeparatePreset: false,
-  presetName: '',
-  batchSize: 5,
-  delayBetweenSummaries: 1000,
-  messageLag: 0,
-  displayMemories: true,
-  colorShortTerm: '#22c55e',
-  colorLongTerm: '#3b82f6',
-  colorOutOfContext: '#ef4444',
-  colorExcluded: '#9ca3af',
-  startInjectingAfter: 3,
-  removeMessagesAfterThreshold: false,
-  staticMemoryMode: false,
-  includeCharacterMessages: true,
-  includeUserMessages: false,
-  includeHiddenMessages: false,
-  includeSystemMessages: false,
-  shortTermInjectionPosition: 'after_scenario',
-  longTermInjectionPosition: 'after_scenario',
-  debugMode: false,
-  enableInNewChats: true,
-  useGlobalToggleState: false,
-  incrementalUpdates: true,
-  smartBatching: true,
-  contextAwareInjection: true,
-  profiles: {},
-  activeProfile: 'default'
+    enabled: true,
+    autoSummarize: true,
+    summarizeTiming: 'after_generation',
+    shortTermLimit: 2000,
+    longTermLimit: 4000,
+    messageThreshold: 50,
+    summaryPrompt: 'Summarize the following message concisely in 1-2 sentences:\n\n{{message}}',
+    summaryMaxTokens: 150,
+    summaryTemperature: 0.1,
+    useSeparatePreset: false,
+    presetName: '',
+    batchSize: 5,
+    delayBetweenSummaries: 1000,
+    messageLag: 0,
+    displayMemories: true,
+    colorShortTerm: '#22c55e',
+    colorLongTerm: '#3b82f6',
+    colorOutOfContext: '#ef4444',
+    colorExcluded: '#9ca3af',
+    startInjectingAfter: 3,
+    removeMessagesAfterThreshold: false,
+    staticMemoryMode: false,
+    includeCharacterMessages: true,
+    includeUserMessages: false,
+    includeHiddenMessages: false,
+    includeSystemMessages: false,
+    shortTermInjectionPosition: 'after_scenario',
+    longTermInjectionPosition: 'after_scenario',
+    debugMode: false,
+    enableInNewChats: true,
+    useGlobalToggleState: false,
+    incrementalUpdates: true,
+    smartBatching: true,
+    contextAwareInjection: true,
+    profiles: {},
+    activeProfile: 'default'
 };
 
 // Extension state
 let settings = { ...defaultSettings };
 let memoryCache = new Map();
-let isProcessing = false;
-let processingQueue = [];
 
 /**
  * Initialize extension
  */
 async function init() {
-  console.log(`[${extensionName}] Starting initialization...`);
-  
-  try {
-    // Initialize settings
-    if (!extension_settings[extensionName]) {
-      extension_settings[extensionName] = { ...defaultSettings };
+    console.log(`[${extensionName}] Starting initialization...`);
+
+    try {
+        // Initialize settings
+        if (!extension_settings[extensionName]) {
+            extension_settings[extensionName] = { ...defaultSettings };
+        }
+        settings = extension_settings[extensionName];
+
+        console.log(`[${extensionName}] Settings loaded`);
+
+        // Apply CSS variables
+        applyCSSVariables();
+
+        // Setup UI
+        await setupUI();
+
+        // Register event listeners
+        registerEventListeners();
+
+        // Register slash commands
+        registerSlashCommands();
+
+        // Trigger an initial memory display update
+        updateMemoryDisplay();
+
+        console.log(`[${extensionName}] ✅ Initialization complete`);
+    } catch (err) {
+        console.error(`[${extensionName}] Fatal initialization error:`, err);
     }
-    settings = extension_settings[extensionName];
-
-    console.log(`[${extensionName}] Settings loaded`);
-
-    // Apply CSS variables
-    applyCSSVariables();
-
-    // Setup UI
-    await setupUI();
-
-    // Register event listeners
-    registerEventListeners();
-
-    // Register slash commands
-    registerSlashCommands();
-
-    console.log(`[${extensionName}] ✅ Initialization complete`);
-  } catch (err) {
-    console.error(`[${extensionName}] Fatal initialization error:`, err);
-    console.error(err.stack);
-  }
 }
 
 /**
  * Setup UI elements
  */
 async function setupUI() {
-  try {
-    console.log(`[${extensionName}] Setting up UI...`);
-
-    // Add extension button to top bar
-    const button = $(`<i id="memory-summarize-button" class="fa-solid fa-brain" title="Memory Summarize v2.0"></i>`);
-    button.on('click', () => toggleConfigPopup());
-    $('#extensionsMenu').append(button);
-    console.log(`[${extensionName}] Button added to extensions menu`);
-
-    // Load config HTML
-    let configHTML = '';
     try {
-      const response = await fetch(`${extensionFolderPath}/config.html`);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      configHTML = await response.text();
-      console.log(`[${extensionName}] Config HTML loaded`);
-    } catch (fetchErr) {
-      console.warn(`[${extensionName}] Failed to load config.html:`, fetchErr.message);
-      configHTML = createDefaultConfigHTML();
+        console.log(`[${extensionName}] Setting up UI...`);
+
+        // Add extension button to top bar
+        const button = $(`<div id="memory-summarize-button" class="list-group-item flex-container flex-gap-10" title="Memory Summarize v2.0"><i class="fa-solid fa-brain"></i> Memory Summarize</div>`);
+        button.on('click', () => toggleConfigPopup());
+        
+        // Check if we should append to the extensions menu or create a new one
+        // Standard ST extensions usually append a button in the extensions menu
+        $('#extensions_settings').append(button);
+        
+        // Also add a quick access icon if desired, or stick to the menu
+        const quickButton = $(`<i id="memory-summarize-icon" class="fa-solid fa-brain" title="Memory Summarize" style="cursor:pointer; margin: 0 5px;"></i>`);
+        quickButton.on('click', () => toggleConfigPopup());
+        $('#extensionsMenu').append(quickButton);
+
+        // Load config HTML
+        let configHTML = '';
+        try {
+            const response = await fetch(`${extensionFolderPath}/config.html`);
+            if (response.ok) {
+                configHTML = await response.text();
+            } else {
+                throw new Error('Config file not found');
+            }
+        } catch (fetchErr) {
+            console.warn(`[${extensionName}] Failed to load config.html, using fallback.`);
+            configHTML = createDefaultConfigHTML();
+        }
+
+        // Create popup container
+        const popupHTML = `
+            <div id="memory-config-popup" class="memory-config-popup">
+                 ${configHTML}
+            </div>`;
+
+        $('body').append(popupHTML);
+
+        // Bind all the UI actions from the helpers
+        bindSettingsToUI();
+        bindButtonActions();
+        bindTabSwitching();
+
+        console.log(`[${extensionName}] UI setup complete`);
+    } catch (err) {
+        console.error(`[${extensionName}] UI Setup Error:`, err);
     }
-
-    // Create popup container
-    const popupHTML = `<div id="memory-config-popup" class="memory-config-popup">
-      <div class="memory-config-header">
-        <h2 class="memory-config-title"><i class="fa-solid fa-brain"></i>Memory Summarize</h2>
-        <button class="memory-config-close" id="memory-config-close">&times;</button>
-      </div>
-      <div class="memory-config-content">
-        ${configHTML}
-      </div>
-    </div>`;
-
-    $('body').append(popupHTML);
-
-    // Attach close handler
-    $('#memory-config-close').on('click', () => toggleConfigPopup());
-
-    console.log(`[${extensionName}] UI setup complete`);
-  } catch (err) {
-    console.error(`[${extensionName}] UI Setup Error:`, err);
-  }
 }
 
 /**
  * Register event listeners
  */
 function registerEventListeners() {
-  try {
-    if (!eventSource || !event_types) {
-      console.warn(`[${extensionName}] EventSource not fully available`);
-      return;
-    }
+    if (!eventSource || !event_types) return;
 
-    // Listen for message received events
     eventSource.on(event_types.MESSAGE_RECEIVED, (data) => {
-      if (settings.enabled && settings.autoSummarize) {
-        onMessageReceived(data);
-      }
+        if (settings.enabled && settings.autoSummarize) {
+            // Placeholder for processing logic
+        }
     });
 
-    eventSource.on(event_types.MESSAGE_SENT, (data) => {
-      if (settings.debugMode) {
-        console.log(`[${extensionName}] Message sent`);
-      }
+    eventSource.on(event_types.CHAT_CHANGED, () => {
+        updateMemoryDisplay();
     });
-
-    eventSource.on(event_types.CHAT_CHANGED, (data) => {
-      if (settings.debugMode) {
-        console.log(`[${extensionName}] Chat changed`);
-      }
-    });
-
-    console.log(`[${extensionName}] Event listeners registered`);
-  } catch (err) {
-    console.error(`[${extensionName}] Error registering event listeners:`, err);
-  }
 }
 
 /**
  * Register slash commands
  */
 function registerSlashCommands() {
-  try {
     if (window.SlashCommandParser) {
-      window.SlashCommandParser.addCommand('memsum', async (args) => {
-        await triggerManualSummarization();
-        return 'Memory summarization triggered';
-      }, [], 'Manually trigger memory summarization');
-
-      console.log(`[${extensionName}] Slash commands registered`);
+        window.SlashCommandParser.addCommand('memsum', async (args) => {
+            return 'Memory summarization triggered (Logic Pending)';
+        }, [], 'Manually trigger memory summarization');
     }
-  } catch (err) {
-    console.warn(`[${extensionName}] Could not register slash commands:`, err);
-  }
-}
-
-/**
- * Handle received messages
- */
-async function onMessageReceived(data) {
-  try {
-    if (settings.debugMode) {
-      console.log(`[${extensionName}] Processing received message`);
-    }
-  } catch (err) {
-    console.error(`[${extensionName}] Error in onMessageReceived:`, err);
-  }
-}
-
-/**
- * Trigger manual summarization
- */
-async function triggerManualSummarization() {
-  try {
-    console.log(`[${extensionName}] Manual summarization triggered`);
-  } catch (err) {
-    console.error(`[${extensionName}] Error in manual summarization:`, err);
-  }
 }
 
 /**
  * Toggle config popup visibility
  */
 function toggleConfigPopup() {
-  try {
     const popup = $('#memory-config-popup');
-    if (popup.length) {
-      popup.toggleClass('visible');
-      console.log(`[${extensionName}] Popup toggled`);
-    } else {
-      console.warn(`[${extensionName}] Popup not found`);
+    popup.toggleClass('visible');
+    
+    // Refresh UI state when opening
+    if (popup.hasClass('visible')) {
+        bindSettingsToUI();
     }
-  } catch (err) {
-    console.error(`[${extensionName}] Error toggling popup:`, err);
-  }
 }
 
-/**
- * Apply CSS variables
- */
+/* ==================== UI HELPER FUNCTIONS (Merged) ==================== */
+
+function bindSettingsToUI() {
+    // Bind all inputs to settings object
+    $('#memory-enabled').prop('checked', settings.enabled).off('change').on('change', function() {
+        settings.enabled = $(this).prop('checked');
+        saveSettingsDebounced();
+    });
+
+    $('#memory-enable-new-chats').prop('checked', settings.enableInNewChats).off('change').on('change', function() {
+        settings.enableInNewChats = $(this).prop('checked');
+        saveSettingsDebounced();
+    });
+
+    $('#memory-short-term-limit').val(settings.shortTermLimit).off('change').on('change', function() {
+        settings.shortTermLimit = parseInt($(this).val());
+        saveSettingsDebounced();
+    });
+
+    $('#memory-summary-prompt').val(settings.summaryPrompt).off('change').on('change', function() {
+        settings.summaryPrompt = $(this).val();
+        saveSettingsDebounced();
+    });
+
+    // Display Tab
+    $('#memory-display').prop('checked', settings.displayMemories).off('change').on('change', function() {
+        settings.displayMemories = $(this).prop('checked');
+        updateMemoryDisplay();
+        saveSettingsDebounced();
+    });
+
+    // Colors
+    $('#memory-color-short').val(settings.colorShortTerm).off('change').on('change', function() {
+        settings.colorShortTerm = $(this).val();
+        applyCSSVariables();
+        saveSettingsDebounced();
+    });
+    
+    // ... (Add other bindings as needed based on config.html IDs)
+}
+
+function bindButtonActions() {
+    $('#memory-close-btn, #memory-cancel-btn').on('click', () => {
+        $('#memory-config-popup').removeClass('visible');
+    });
+
+    $('#memory-save-btn').on('click', () => {
+        saveSettingsDebounced();
+        if (typeof toastr !== 'undefined') toastr.success('Settings saved!');
+        $('#memory-config-popup').removeClass('visible');
+    });
+
+    $('#memory-reset-prompt').on('click', () => {
+        const defaultPrompt = defaultSettings.summaryPrompt;
+        $('#memory-summary-prompt').val(defaultPrompt);
+        settings.summaryPrompt = defaultPrompt;
+        saveSettingsDebounced();
+    });
+}
+
+function bindTabSwitching() {
+    $('.memory-config-tab').on('click', function() {
+        const tabName = $(this).data('tab');
+        $('.memory-config-tab').removeClass('active');
+        $(this).addClass('active');
+        $('.memory-config-section').removeClass('active');
+        $(`.memory-config-section[data-section="${tabName}"]`).addClass('active');
+    });
+}
+
 function applyCSSVariables() {
-  try {
     const root = document.documentElement;
     root.style.setProperty('--qm-short', settings.colorShortTerm);
     root.style.setProperty('--qm-long', settings.colorLongTerm);
     root.style.setProperty('--qm-old', settings.colorOutOfContext);
     root.style.setProperty('--qm-excluded', settings.colorExcluded);
-  } catch (err) {
-    console.error(`[${extensionName}] Error applying CSS variables:`, err);
-  }
 }
 
-/**
- * Create default config HTML if template not found
- */
+function updateMemoryDisplay() {
+    // Basic placeholder for the visual display logic
+    // In a full version, this would iterate over chat messages and append the summary divs
+    if (!settings.displayMemories) {
+        $('.message-memory').remove();
+        return;
+    }
+}
+
 function createDefaultConfigHTML() {
-  return `
-    <div class="memory-config-section active">
-      <div class="memory-config-group">
-        <h3>Extension Status</h3>
-        <p>✅ Memory Summarize v2.0 is loaded and active!</p>
-        <label>
-          <input type="checkbox" id="enable-extension" class="memory-checkbox" ${settings.enabled ? 'checked' : ''}> 
-          Enable Memory Summarize
-        </label>
-        <p><small>Config template not found. Check browser console (F12) for details.</small></p>
-      </div>
-    </div>
-  `;
+    return `<div style="padding:20px; color:white;">Config file could not be loaded. Please check extension installation.</div>`;
 }
 
-// Export for debugging/global access
+// Export for debugging/global access (Fixed capitalization)
 window.memorySummarize = {
-  version: '2.0.0',
-  settings,
-  memoryCache,
-  init,
-  toggleConfigPopup,
-  triggerManualSummarization
+    settings,
+    memoryCache,
+    init,
+    toggleConfigPopup
 };
 
-// Initialize when jQuery is ready (standard SillyTavern pattern)
+// Initialize when jQuery is ready
 jQuery(async () => {
-  console.log(`[${extensionName}] jQuery ready, initializing extension...`);
-  await init();
-  console.log(`[${extensionName}] Extension loaded`);
+    await init();
 });
