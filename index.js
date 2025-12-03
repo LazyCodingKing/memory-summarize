@@ -1,11 +1,8 @@
 /**
  * Memory Summarize v2.0 - Main Extension File
  * Corrected for SillyTavern 1.14+ (2025)
- * Uses proper SillyTavern.getContext() API instead of direct imports
+ * Proper lazy loading of SillyTavern API
  */
-
-// Get context using the proper SillyTavern API
-const { eventSource, event_types, saveSettingsDebounced, callPopup, getContext, extensionSettings } = SillyTavern.getContext();
 
 // Extension metadata
 const extensionName = 'memory-summarize';
@@ -57,18 +54,42 @@ let memoryCache = new Map();
 let isProcessing = false;
 let processingQueue = [];
 
+// API references (will be populated on init)
+let extensionSettings = null;
+let eventSource = null;
+let event_types = null;
+let getContext = null;
+
 /**
- * Initialize extension
+ * Initialize extension - gets called by SillyTavern when extension loads
  */
 async function init() {
-  console.log(`[${extensionName}] Initializing Memory Summarize v2.0`);
+  console.log(`[${extensionName}] Starting initialization...`);
   
   try {
-    // Load settings from extension settings
+    // Get API from window.SillyTavern or global scope
+    const API = window.SillyTavern || window;
+    
+    if (!API.extensionSettings) {
+      console.error(`[${extensionName}] SillyTavern API not available yet`);
+      return;
+    }
+
+    // Get references to SillyTavern APIs
+    extensionSettings = API.extensionSettings || {};
+    eventSource = API.eventSource;
+    event_types = API.event_types;
+    getContext = API.getContext || window.getContext;
+
+    console.log(`[${extensionName}] API references obtained`);
+
+    // Load settings
     if (!extensionSettings[extensionName]) {
-      extensionSettings[extensionName] = defaultSettings;
+      extensionSettings[extensionName] = { ...defaultSettings };
     }
     settings = extensionSettings[extensionName];
+
+    console.log(`[${extensionName}] Settings loaded:`, settings);
 
     // Apply CSS variables
     applyCSSVariables();
@@ -88,30 +109,35 @@ async function init() {
     // Load memories for current chat
     await loadMemories();
 
-    console.log(`[${extensionName}] Initialization complete`);
+    console.log(`[${extensionName}] ✅ Initialization complete`);
   } catch (err) {
     console.error(`[${extensionName}] Fatal initialization error:`, err);
+    console.error(err.stack);
   }
 }
 
 /**
- * Setup UI elements - FIXED with proper HTML
+ * Setup UI elements
  */
 async function setupUI() {
   try {
-    // Add extension button to top bar - FIXED: proper HTML template
+    console.log(`[${extensionName}] Setting up UI...`);
+
+    // Add extension button to top bar
     const button = $(`<i id="memory-summarize-button" class="fa-solid fa-brain" title="Memory Summarize v2.0"></i>`);
     button.on('click', () => toggleConfigPopup());
     $('#extensionsMenu').append(button);
+    console.log(`[${extensionName}] Button added to extensions menu`);
 
-    // Load config HTML safely
+    // Load config HTML
     let configHTML = '';
     try {
       const response = await fetch(`${extensionFolderPath}/config.html`);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       configHTML = await response.text();
+      console.log(`[${extensionName}] Config HTML loaded`);
     } catch (fetchErr) {
-      console.warn(`[${extensionName}] Failed to load config.html:`, fetchErr);
+      console.warn(`[${extensionName}] Failed to load config.html:`, fetchErr.message);
       configHTML = createDefaultConfigHTML();
     }
 
@@ -142,6 +168,11 @@ async function setupUI() {
  */
 function registerEventListeners() {
   try {
+    if (!eventSource || !event_types) {
+      console.warn(`[${extensionName}] EventSource not available`);
+      return;
+    }
+
     // Listen for message received events
     eventSource.on(event_types.MESSAGE_RECEIVED, (data) => {
       if (settings.enabled && settings.autoSummarize) {
@@ -151,8 +182,15 @@ function registerEventListeners() {
 
     eventSource.on(event_types.MESSAGE_SENT, (data) => {
       if (settings.debugMode) {
-        console.log(`[${extensionName}] Message sent event triggered`);
+        console.log(`[${extensionName}] Message sent`);
       }
+    });
+
+    eventSource.on(event_types.CHAT_CHANGED, (data) => {
+      if (settings.debugMode) {
+        console.log(`[${extensionName}] Chat changed`);
+      }
+      loadMemories();
     });
 
     console.log(`[${extensionName}] Event listeners registered`);
@@ -169,7 +207,7 @@ function registerSlashCommands() {
     if (window.SlashCommandParser) {
       window.SlashCommandParser.addCommand('memsum', async (args) => {
         await triggerManualSummarization();
-        return '';
+        return 'Memory summarization triggered';
       }, [], 'Manually trigger memory summarization');
 
       console.log(`[${extensionName}] Slash commands registered`);
@@ -195,13 +233,18 @@ function setupContextInjection() {
  */
 async function loadMemories() {
   try {
+    if (!getContext) {
+      console.warn(`[${extensionName}] getContext not available`);
+      return;
+    }
+
     const ctx = getContext();
     if (!ctx || !ctx.chatId) {
-      console.warn(`[${extensionName}] No active chat context`);
+      console.log(`[${extensionName}] No active chat context`);
       return;
     }
     
-    console.log(`[${extensionName}] Memories loaded for chat: ${ctx.chatId}`);
+    console.log(`[${extensionName}] Loaded memories for chat: ${ctx.chatId}`);
   } catch (err) {
     console.error(`[${extensionName}] Error loading memories:`, err);
   }
@@ -215,7 +258,6 @@ async function onMessageReceived(data) {
     if (settings.debugMode) {
       console.log(`[${extensionName}] Processing received message`);
     }
-    // Add your summarization logic here
   } catch (err) {
     console.error(`[${extensionName}] Error in onMessageReceived:`, err);
   }
@@ -227,7 +269,6 @@ async function onMessageReceived(data) {
 async function triggerManualSummarization() {
   try {
     console.log(`[${extensionName}] Manual summarization triggered`);
-    // Add your summarization logic here
   } catch (err) {
     console.error(`[${extensionName}] Error in manual summarization:`, err);
   }
@@ -241,6 +282,9 @@ function toggleConfigPopup() {
     const popup = $('#memory-config-popup');
     if (popup.length) {
       popup.toggleClass('visible');
+      console.log(`[${extensionName}] Popup toggled`);
+    } else {
+      console.warn(`[${extensionName}] Popup not found`);
     }
   } catch (err) {
     console.error(`[${extensionName}] Error toggling popup:`, err);
@@ -270,32 +314,28 @@ function createDefaultConfigHTML() {
     <div class="memory-config-section active">
       <div class="memory-config-group">
         <h3>Extension Status</h3>
+        <p>✅ Memory Summarize v2.0 is loaded and active!</p>
         <label>
-          <input type="checkbox" id="enable-extension" class="memory-checkbox"> 
+          <input type="checkbox" id="enable-extension" class="memory-checkbox" ${settings.enabled ? 'checked' : ''}> 
           Enable Memory Summarize
         </label>
-        <p><small>Config template not found. Using fallback UI. Check browser console for errors.</small></p>
+        <p><small>Config template not found. Check browser console (F12) for details.</small></p>
       </div>
     </div>
   `;
 }
 
-// Initialize when APP is ready
-if (eventSource) {
-  eventSource.once(event_types.APP_READY, () => {
-    console.log(`[${extensionName}] APP_READY event received, initializing...`);
-    init();
-  });
-} else {
-  console.warn(`[${extensionName}] EventSource not available, calling init immediately`);
-  init();
-}
-
 // Export for debugging/global access
 window.memorySummarize = {
+  version: '2.0.0',
   settings,
   memoryCache,
   init,
   toggleConfigPopup,
-  triggerManualSummarization
+  triggerManualSummarization,
+  loadMemories
 };
+
+// Call init when this file loads
+console.log(`[${extensionName}] Script loaded, calling init...`);
+init();
