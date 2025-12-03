@@ -1,9 +1,11 @@
 {
   "display_name": "Memory Summarize v2.0",
-  "loading_order": 5,
+  "loading_order": 100,
+  "requires": [],
+  "optional": [],
   "js": "index.js",
-  "css": "style.css",
-  "author": "LazyCodingKing",
+  "css": "styles.css",
+  "author": "LazyCodingKing (Original by Qvink)",
   "version": "2.0.0",
   "homePage": "https://github.com/LazyCodingKing/memory-summarize"
 }
