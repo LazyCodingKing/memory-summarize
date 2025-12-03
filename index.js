@@ -87,43 +87,13 @@ function loadSettings() {
  * Setup UI
  */
 async function setupUI() {
-    if ($('#memory-summarize-button').length > 0) return;
+    // ... button creation ...
 
-    // Add Button
-    const buttonHtml = `
-        <div id="memory-summarize-button" class="list-group-item flex-container flexGap5" title="Memory Summarize v2.0">
-            <div class="fa-solid fa-brain extensionsMenuExtensionButton"></div> 
-            <span>Memory Summarize</span>
-        </div>`;
-    $('#extensions_settings').append(buttonHtml);
-    $('#memory-summarize-button').on('click', () => toggleConfigPopup());
+    // Manual Fetch Method (Old Style)
+    const response = await fetch('third-party/memory-summarize/config.html');
+    const configHTML = await response.text();
 
-    // Load HTML Template
-    let configHTML = "";
-    try {
-        configHTML = await renderExtensionTemplateAsync(extensionFolderPath, 'config');
-    } catch (e) {
-        console.warn(`[${extensionName}] Template load failed:`, e);
-        configHTML = `<div style="padding:20px;"><h3>Error</h3><p>Could not load config.html. Ensure file exists.</p></div>`;
-    }
-
-    // Create Popup
-    const popupHTML = `
-        <div id="memory-config-popup" class="memory-config-popup">
-             ${configHTML}
-        </div>`;
-    
-    if ($('#memory-config-popup').length === 0) {
-        $('body').append(popupHTML);
-    }
-
-    bindSettingsToUI();
-    
-    $(document).on('click', '#memory-close-btn, #memory-cancel-btn', function() {
-         $('#memory-config-popup').removeClass('visible');
-    });
-
-    applyCSSVariables();
+    // ... append to popup ...
 }
 
 /**
