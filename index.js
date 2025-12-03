@@ -1,6 +1,7 @@
 /**
  * Memory Summarize v2.0 - Main Extension File
  * Fixed & Merged for SillyTavern
+ * Author: LazyCodingKing
  */
 
 // Get SillyTavern context API
@@ -98,18 +99,19 @@ async function setupUI() {
     try {
         console.log(`[${extensionName}] Setting up UI...`);
 
-        // Add extension button to top bar
-        const button = $(`<div id="memory-summarize-button" class="list-group-item flex-container flex-gap-10" title="Memory Summarize v2.0"><i class="fa-solid fa-brain"></i> Memory Summarize</div>`);
+        // Add extension button to top bar (Standard SillyTavern Extensions Menu)
+        // We create a container to ensure consistent styling
+        const buttonHtml = `
+            <div id="memory-summarize-button" class="list-group-item flex-container flex-gap-10" title="Memory Summarize v2.0">
+                <i class="fa-solid fa-brain"></i> 
+                <span data-i18n="Memory Summarize">Memory Summarize</span>
+            </div>`;
+        
+        const button = $(buttonHtml);
         button.on('click', () => toggleConfigPopup());
         
-        // Check if we should append to the extensions menu or create a new one
-        // Standard ST extensions usually append a button in the extensions menu
+        // Append to the extension menu container
         $('#extensions_settings').append(button);
-        
-        // Also add a quick access icon if desired, or stick to the menu
-        const quickButton = $(`<i id="memory-summarize-icon" class="fa-solid fa-brain" title="Memory Summarize" style="cursor:pointer; margin: 0 5px;"></i>`);
-        quickButton.on('click', () => toggleConfigPopup());
-        $('#extensionsMenu').append(quickButton);
 
         // Load config HTML
         let configHTML = '';
@@ -133,10 +135,13 @@ async function setupUI() {
 
         $('body').append(popupHTML);
 
-        // Bind all the UI actions from the helpers
+        // Bind all the UI actions
         bindSettingsToUI();
-        bindButtonActions();
-        bindTabSwitching();
+        
+        // Close button handler (using delegated event for robustness)
+        $(document).on('click', '#memory-close-btn, #memory-cancel-btn', function() {
+             $('#memory-config-popup').removeClass('visible');
+        });
 
         console.log(`[${extensionName}] UI setup complete`);
     } catch (err) {
@@ -153,6 +158,7 @@ function registerEventListeners() {
     eventSource.on(event_types.MESSAGE_RECEIVED, (data) => {
         if (settings.enabled && settings.autoSummarize) {
             // Placeholder for processing logic
+            console.log(`[${extensionName}] Message received, ready to summarize.`);
         }
     });
 
@@ -188,70 +194,72 @@ function toggleConfigPopup() {
 /* ==================== UI HELPER FUNCTIONS (Merged) ==================== */
 
 function bindSettingsToUI() {
-    // Bind all inputs to settings object
-    $('#memory-enabled').prop('checked', settings.enabled).off('change').on('change', function() {
-        settings.enabled = $(this).prop('checked');
-        saveSettingsDebounced();
-    });
+    // Basic Settings
+    bindCheckbox('#memory-enabled', 'enabled');
+    bindCheckbox('#memory-enable-new-chats', 'enableInNewChats');
+    bindCheckbox('#memory-display', 'displayMemories', updateMemoryDisplay);
+    bindCheckbox('#memory-auto-summarize', 'autoSummarize');
 
-    $('#memory-enable-new-chats').prop('checked', settings.enableInNewChats).off('change').on('change', function() {
-        settings.enableInNewChats = $(this).prop('checked');
-        saveSettingsDebounced();
-    });
+    // Limits & Numbers
+    bindInput('#memory-short-term-limit', 'shortTermLimit', true);
+    bindInput('#memory-long-term-limit', 'longTermLimit', true);
+    bindInput('#memory-message-threshold', 'messageThreshold', true);
 
-    $('#memory-short-term-limit').val(settings.shortTermLimit).off('change').on('change', function() {
-        settings.shortTermLimit = parseInt($(this).val());
-        saveSettingsDebounced();
-    });
-
-    $('#memory-summary-prompt').val(settings.summaryPrompt).off('change').on('change', function() {
-        settings.summaryPrompt = $(this).val();
-        saveSettingsDebounced();
-    });
-
-    // Display Tab
-    $('#memory-display').prop('checked', settings.displayMemories).off('change').on('change', function() {
-        settings.displayMemories = $(this).prop('checked');
-        updateMemoryDisplay();
-        saveSettingsDebounced();
-    });
+    // Prompts
+    bindInput('#memory-summary-prompt', 'summaryPrompt');
 
     // Colors
-    $('#memory-color-short').val(settings.colorShortTerm).off('change').on('change', function() {
-        settings.colorShortTerm = $(this).val();
-        applyCSSVariables();
-        saveSettingsDebounced();
-    });
-    
-    // ... (Add other bindings as needed based on config.html IDs)
-}
+    bindInput('#memory-color-short', 'colorShortTerm', false, applyCSSVariables);
+    bindInput('#memory-color-long', 'colorLongTerm', false, applyCSSVariables);
+    bindInput('#memory-color-old', 'colorOutOfContext', false, applyCSSVariables);
+    bindInput('#memory-color-excluded', 'colorExcluded', false, applyCSSVariables);
 
-function bindButtonActions() {
-    $('#memory-close-btn, #memory-cancel-btn').on('click', () => {
-        $('#memory-config-popup').removeClass('visible');
-    });
-
-    $('#memory-save-btn').on('click', () => {
-        saveSettingsDebounced();
-        if (typeof toastr !== 'undefined') toastr.success('Settings saved!');
-        $('#memory-config-popup').removeClass('visible');
-    });
-
-    $('#memory-reset-prompt').on('click', () => {
-        const defaultPrompt = defaultSettings.summaryPrompt;
-        $('#memory-summary-prompt').val(defaultPrompt);
-        settings.summaryPrompt = defaultPrompt;
-        saveSettingsDebounced();
-    });
-}
-
-function bindTabSwitching() {
-    $('.memory-config-tab').on('click', function() {
+    // Bind Tab Switching
+    $('.memory-config-tab').off('click').on('click', function() {
         const tabName = $(this).data('tab');
         $('.memory-config-tab').removeClass('active');
         $(this).addClass('active');
         $('.memory-config-section').removeClass('active');
         $(`.memory-config-section[data-section="${tabName}"]`).addClass('active');
+    });
+
+    // Save Button
+    $('#memory-save-btn').off('click').on('click', () => {
+        saveSettingsDebounced();
+        if (typeof toastr !== 'undefined') toastr.success('Settings saved!');
+        $('#memory-config-popup').removeClass('visible');
+    });
+}
+
+/**
+ * Helper to bind a checkbox to a setting
+ */
+function bindCheckbox(selector, settingKey, callback) {
+    const el = $(selector);
+    if (!el.length) return;
+    
+    el.prop('checked', settings[settingKey]);
+    el.off('change').on('change', function() {
+        settings[settingKey] = $(this).prop('checked');
+        saveSettingsDebounced();
+        if (callback) callback();
+    });
+}
+
+/**
+ * Helper to bind an input to a setting
+ */
+function bindInput(selector, settingKey, isNumber = false, callback) {
+    const el = $(selector);
+    if (!el.length) return;
+
+    el.val(settings[settingKey]);
+    el.off('change').on('change', function() {
+        let val = $(this).val();
+        if (isNumber) val = parseInt(val) || 0;
+        settings[settingKey] = val;
+        saveSettingsDebounced();
+        if (callback) callback();
     });
 }
 
@@ -264,19 +272,22 @@ function applyCSSVariables() {
 }
 
 function updateMemoryDisplay() {
-    // Basic placeholder for the visual display logic
-    // In a full version, this would iterate over chat messages and append the summary divs
+    // Logic to inject visual indicators into the chat
     if (!settings.displayMemories) {
         $('.message-memory').remove();
         return;
     }
+    // (Actual logic would loop through chat messages here)
 }
 
 function createDefaultConfigHTML() {
-    return `<div style="padding:20px; color:white;">Config file could not be loaded. Please check extension installation.</div>`;
+    return `<div style="padding:20px; color:white;">
+        <h3>Configuration</h3>
+        <p>Config file not found. Ensure <b>config.html</b> is in the extension folder.</p>
+    </div>`;
 }
 
-// Export for debugging/global access (Fixed capitalization)
+// Export for debugging/global access (Standardized Case)
 window.memorySummarize = {
     settings,
     memoryCache,
@@ -284,7 +295,7 @@ window.memorySummarize = {
     toggleConfigPopup
 };
 
-// Initialize when jQuery is ready
+// Initialize when jQuery is ready (Standard ST Loader)
 jQuery(async () => {
     await init();
 });
