@@ -238,7 +238,8 @@ async function generateSummaryForMessage(index, content) {
         ];
 
         const result = await generateRaw({
-            prompt: messages,
+            prompt: wrappedContent,
+            system_prompt: settingsPrompt,
             trimNames: false,
             prefill: "", 
             disable_formatting: true,
