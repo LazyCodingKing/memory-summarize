@@ -1,12 +1,7 @@
 import { 
     saveSettingsDebounced, 
-    Generate, 
     eventSource, 
-    event_types, 
-    getRequestHeaders,
-    substituteParams,
-    callGenericPopup,
-    Popup
+    event_types
 } from '../../../../script.js';
 import { extension_settings, getContext } from '../../../extensions.js';
 
@@ -16,7 +11,7 @@ import { extension_settings, getContext } from '../../../extensions.js';
 const extensionName = 'memory-summarize';
 const summaryDivClass = 'qvink_memory_text';
 
-// Inject CSS dynamically (modern approach with CSS custom properties)
+// Inject CSS dynamically
 const styles = `
     .qvink_memory_text {
         font-size: 0.85em;
@@ -61,8 +56,11 @@ const defaultSettings = {
     messageThreshold: 20,
     messageLag: 0,
 
-    // Prompting - Improved with better instructions
-    summaryPrompt: `Summarize the following message concisely in past tense. Focus on key events, information, and character actions. Do not include any preamble, commentary, or "Summary:" prefix. Output only the summary itself.\n\nMessage to summarize:\n{{message}}`,
+    // Prompting
+    summaryPrompt: `Summarize the following message concisely in past tense. Focus on key events, information, and character actions. Do not include any preamble, commentary, or "Summary:" prefix. Output only the summary itself.
+
+Message to summarize:
+{{message}}`,
 
     // Display options
     displayMemories: true,
@@ -73,8 +71,10 @@ const defaultSettings = {
     includeSystemMessages: false,
     includeCharacterMessages: true,
 
-    // Injection template with better formatting
-    memoryTemplate: `[Previous conversation summary]:\n{{memories}}\n`,
+    // Injection template
+    memoryTemplate: `[Previous conversation summary]:
+{{memories}}
+`,
 
     // Advanced settings
     maxSummaryLength: 200,
@@ -86,9 +86,6 @@ const defaultSettings = {
 // UTILITY FUNCTIONS
 // ============================================================================
 
-/**
- * Get extension settings with fallback to defaults
- */
 function getSettings(key) {
     if (!extension_settings[extensionName]) {
         extension_settings[extensionName] = { ...defaultSettings };
@@ -96,9 +93,6 @@ function getSettings(key) {
     return extension_settings[extensionName]?.[key] ?? defaultSettings[key];
 }
 
-/**
- * Set extension settings and save
- */
 function setSettings(key, value) {
     if (!extension_settings[extensionName]) {
         extension_settings[extensionName] = { ...defaultSettings };
@@ -107,18 +101,12 @@ function setSettings(key, value) {
     saveSettingsDebounced();
 }
 
-/**
- * Debug logging utility
- */
 function log(msg, ...args) {
     if (getSettings('debugMode')) {
         console.log(`[${extensionName}] ${msg}`, ...args);
     }
 }
 
-/**
- * Error logging utility
- */
 function logError(msg, error) {
     console.error(`[${extensionName}] ${msg}`, error);
 }
@@ -127,9 +115,6 @@ function logError(msg, error) {
 // CORE LOGIC: VISUALS
 // ============================================================================
 
-/**
- * Update message visuals with summary display
- */
 function updateMessageVisuals(index) {
     if (!getSettings('displayMemories') || !getSettings('showInlineMemories')) {
         return;
@@ -145,7 +130,6 @@ function updateMessageVisuals(index) {
         return;
     }
 
-    // Remove existing summary display
     mesElement.find(`.${summaryDivClass}`).remove();
 
     const message = context.chat[index];
@@ -160,14 +144,10 @@ function updateMessageVisuals(index) {
         `;
         messageTextDiv.after(summaryHtml);
 
-        // Add click handler for editing
         mesElement.find(`.${summaryDivClass}`).on('click', () => editSummary(index));
     }
 }
 
-/**
- * Update visuals for all messages in chat
- */
 function updateAllMessageVisuals() {
     const context = getContext();
     if (!context.chat) return;
@@ -181,9 +161,6 @@ function updateAllMessageVisuals() {
 // CORE LOGIC: SUMMARIZATION
 // ============================================================================
 
-/**
- * Generate summary for a message
- */
 async function generateSummary(message, messageIndex) {
     if (!getSettings('enabled')) {
         return null;
@@ -194,12 +171,29 @@ async function generateSummary(message, messageIndex) {
 
         const prompt = getSettings('summaryPrompt').replace('{{message}}', message.mes || '');
 
-        // Use modern Generate API
-        const summary = await Generate(prompt, {
-            max_length: getSettings('maxSummaryLength'),
-            temperature: 0.7,
-            top_p: 0.9,
+        // Use the context's generate function
+        const context = getContext();
+        const quietPrompt = prompt;
+
+        // Call the generation API via the proper method
+        const response = await fetch('/api/generate', {
+            method: 'POST',
+            headers: context.getRequestHeaders(),
+            body: JSON.stringify({
+                prompt: quietPrompt,
+                use_mancer: false,
+                use_openrouter: false,
+                temperature: 0.7,
+                max_length: getSettings('maxSummaryLength'),
+            })
         });
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        const summary = data.response || data.results?.[0]?.text || '';
 
         if (!summary || summary.trim().length === 0) {
             logError('Generated summary is empty');
@@ -216,9 +210,6 @@ async function generateSummary(message, messageIndex) {
     }
 }
 
-/**
- * Save summary to message
- */
 async function saveSummary(messageIndex, summary) {
     const context = getContext();
     if (!context.chat || !context.chat[messageIndex]) {
@@ -243,9 +234,6 @@ async function saveSummary(messageIndex, summary) {
     log('Saved summary for message', messageIndex);
 }
 
-/**
- * Summarize a specific message
- */
 async function summarizeMessage(messageIndex) {
     const context = getContext();
     if (!context.chat || !context.chat[messageIndex]) {
@@ -254,12 +242,10 @@ async function summarizeMessage(messageIndex) {
 
     const message = context.chat[messageIndex];
 
-    // Check if message should be summarized
     if (!shouldSummarizeMessage(message)) {
         return;
     }
 
-    // Show loading indicator
     const mesElement = $(`#chat .mes[mesid="${messageIndex}"]`);
     const existingSummary = mesElement.find(`.${summaryDivClass}`);
     if (existingSummary.length > 0) {
@@ -277,9 +263,6 @@ async function summarizeMessage(messageIndex) {
     }
 }
 
-/**
- * Check if message should be summarized based on settings
- */
 function shouldSummarizeMessage(message) {
     const includeUser = getSettings('includeUserMessages');
     const includeSystem = getSettings('includeSystemMessages');
@@ -292,9 +275,6 @@ function shouldSummarizeMessage(message) {
     return true;
 }
 
-/**
- * Auto-summarize recent messages based on threshold
- */
 async function autoSummarize() {
     if (!getSettings('enabled') || !getSettings('autoSummarize')) {
         return;
@@ -308,12 +288,10 @@ async function autoSummarize() {
     const threshold = getSettings('messageThreshold');
     const lag = getSettings('messageLag');
 
-    // Check if we should trigger auto-summarize
     if (context.chat.length < threshold) {
         return;
     }
 
-    // Summarize messages that don't have summaries yet
     const messagesToSummarize = context.chat
         .map((msg, idx) => ({ msg, idx }))
         .filter(({ msg, idx }) => 
@@ -329,45 +307,27 @@ async function autoSummarize() {
     log(`Auto-summarizing ${messagesToSummarize.length} messages`);
 
     if (getSettings('batchSummarize')) {
-        // Batch processing
         for (const { idx } of messagesToSummarize) {
             await summarizeMessage(idx);
         }
     } else {
-        // Summarize only the oldest unsummarized message
         await summarizeMessage(messagesToSummarize[0].idx);
     }
 }
 
-/**
- * Edit summary interactively
- */
 async function editSummary(messageIndex) {
     const context = getContext();
     const message = context.chat[messageIndex];
     const currentSummary = message.extensions?.[extensionName]?.summary || '';
 
-    const newSummary = await callGenericPopup(
-        'Edit summary for this message:',
-        Popup.TYPES.INPUT,
-        currentSummary,
-        { 
-            wide: true, 
-            large: true,
-            okButton: 'Save',
-            cancelButton: 'Cancel'
-        }
-    );
+    const newSummary = prompt('Edit summary for this message:', currentSummary);
 
-    if (newSummary !== false && newSummary !== null) {
+    if (newSummary !== null && newSummary !== '') {
         await saveSummary(messageIndex, newSummary);
         toastr.success('Summary updated', 'Memory Summarize');
     }
 }
 
-/**
- * Delete summary from message
- */
 async function deleteSummary(messageIndex) {
     const context = getContext();
     const message = context.chat[messageIndex];
@@ -384,9 +344,6 @@ async function deleteSummary(messageIndex) {
 // PROMPT INJECTION
 // ============================================================================
 
-/**
- * Get all summaries for context injection
- */
 function getAllSummaries() {
     const context = getContext();
     if (!context.chat) return [];
@@ -400,9 +357,6 @@ function getAllSummaries() {
         .filter(item => item.summary);
 }
 
-/**
- * Build memory injection string
- */
 function buildMemoryInjection() {
     if (!getSettings('enabled')) {
         return '';
@@ -417,7 +371,6 @@ function buildMemoryInjection() {
     const context = getContext();
     const maxIndex = context.chat.length - lag - 1;
 
-    // Filter summaries based on lag setting
     const relevantSummaries = summaries
         .filter(item => item.index <= maxIndex)
         .map(item => item.summary)
@@ -431,33 +384,12 @@ function buildMemoryInjection() {
     return template.replace('{{memories}}', relevantSummaries);
 }
 
-/**
- * Inject memories into prompt
- */
-function injectMemories(chat) {
-    const injection = buildMemoryInjection();
-
-    if (injection) {
-        log('Injecting memories into prompt');
-        // Add as a system message-like injection
-        return [
-            { role: 'system', content: injection },
-            ...chat
-        ];
-    }
-
-    return chat;
-}
-
 // ============================================================================
 // UI INTEGRATION
 // ============================================================================
 
-/**
- * Add message action buttons
- */
 function addMessageButtons() {
-    $(document).on('click', '.mes', function() {
+    $(document).on('mouseenter', '.mes', function() {
         const messageId = $(this).attr('mesid');
         if (!messageId) return;
 
@@ -489,53 +421,42 @@ function addMessageButtons() {
     });
 }
 
-/**
- * Load settings HTML
- */
 async function loadSettingsHTML() {
-    const settingsHtml = await $.get(`scripts/extensions/third-party/${extensionName}/settings.html`);
-    $('#extensions_settings2').append(settingsHtml);
-
-    // Bind settings controls
-    bindSettingsControls();
+    try {
+        const settingsHtml = await $.get(`scripts/extensions/third-party/${extensionName}/settings.html`);
+        $('#extensions_settings2').append(settingsHtml);
+        bindSettingsControls();
+    } catch (error) {
+        logError('Failed to load settings HTML', error);
+    }
 }
 
-/**
- * Bind settings UI controls
- */
 function bindSettingsControls() {
-    // Enable/disable toggle
     $('#memory_summarize_enabled').prop('checked', getSettings('enabled')).on('change', function() {
         setSettings('enabled', $(this).prop('checked'));
     });
 
-    // Auto-summarize toggle
     $('#memory_summarize_auto').prop('checked', getSettings('autoSummarize')).on('change', function() {
         setSettings('autoSummarize', $(this).prop('checked'));
     });
 
-    // Message threshold
     $('#memory_summarize_threshold').val(getSettings('messageThreshold')).on('input', function() {
         setSettings('messageThreshold', parseInt($(this).val()));
     });
 
-    // Message lag
     $('#memory_summarize_lag').val(getSettings('messageLag')).on('input', function() {
         setSettings('messageLag', parseInt($(this).val()));
     });
 
-    // Summary prompt
     $('#memory_summarize_prompt').val(getSettings('summaryPrompt')).on('input', function() {
         setSettings('summaryPrompt', $(this).val());
     });
 
-    // Display memories toggle
     $('#memory_summarize_display').prop('checked', getSettings('displayMemories')).on('change', function() {
         setSettings('displayMemories', $(this).prop('checked'));
         updateAllMessageVisuals();
     });
 
-    // Message type toggles
     $('#memory_summarize_include_user').prop('checked', getSettings('includeUserMessages')).on('change', function() {
         setSettings('includeUserMessages', $(this).prop('checked'));
     });
@@ -548,32 +469,23 @@ function bindSettingsControls() {
         setSettings('includeSystemMessages', $(this).prop('checked'));
     });
 
-    // Memory template
     $('#memory_summarize_template').val(getSettings('memoryTemplate')).on('input', function() {
         setSettings('memoryTemplate', $(this).val());
     });
 
-    // Debug mode
     $('#memory_summarize_debug').prop('checked', getSettings('debugMode')).on('change', function() {
         setSettings('debugMode', $(this).prop('checked'));
     });
 
-    // Batch summarize
     $('#memory_summarize_batch').prop('checked', getSettings('batchSummarize')).on('change', function() {
         setSettings('batchSummarize', $(this).prop('checked'));
     });
 
-    // Bulk actions
     $('#memory_summarize_all').on('click', async function() {
         const context = getContext();
         if (!context.chat) return;
 
-        const confirmed = await callGenericPopup(
-            `Summarize all ${context.chat.length} messages? This may take a while.`,
-            Popup.TYPES.CONFIRM
-        );
-
-        if (confirmed) {
+        if (confirm(`Summarize all ${context.chat.length} messages? This may take a while.`)) {
             for (let i = 0; i < context.chat.length; i++) {
                 await summarizeMessage(i);
             }
@@ -582,12 +494,7 @@ function bindSettingsControls() {
     });
 
     $('#memory_summarize_clear_all').on('click', async function() {
-        const confirmed = await callGenericPopup(
-            'Delete all summaries? This cannot be undone.',
-            Popup.TYPES.CONFIRM
-        );
-
-        if (confirmed) {
+        if (confirm('Delete all summaries? This cannot be undone.')) {
             const context = getContext();
             context.chat.forEach(msg => {
                 if (msg.extensions?.[extensionName]) {
@@ -605,51 +512,31 @@ function bindSettingsControls() {
 // EVENT HANDLERS
 // ============================================================================
 
-/**
- * Handle message events
- */
 function setupEventHandlers() {
-    // When a new message is received
     eventSource.on(event_types.MESSAGE_RECEIVED, async (messageIndex) => {
         log('Message received:', messageIndex);
         updateMessageVisuals(messageIndex);
         await autoSummarize();
     });
 
-    // When a message is sent
     eventSource.on(event_types.MESSAGE_SENT, async (messageIndex) => {
         log('Message sent:', messageIndex);
         updateMessageVisuals(messageIndex);
         await autoSummarize();
     });
 
-    // When chat is loaded
     eventSource.on(event_types.CHAT_CHANGED, () => {
         log('Chat changed');
         updateAllMessageVisuals();
     });
 
-    // When a message is edited
     eventSource.on(event_types.MESSAGE_EDITED, (messageIndex) => {
         log('Message edited:', messageIndex);
         updateMessageVisuals(messageIndex);
     });
 
-    // When a message is deleted
     eventSource.on(event_types.MESSAGE_DELETED, (messageIndex) => {
         log('Message deleted:', messageIndex);
-    });
-
-    // Inject memories before generation
-    eventSource.on(event_types.CHAT_COMPLETION_PROMPT_READY, (data) => {
-        if (getSettings('enabled')) {
-            const injection = buildMemoryInjection();
-            if (injection) {
-                // Add to system prompt or as a separate message
-                data.messages = injectMemories(data.messages);
-                log('Injected memories into prompt');
-            }
-        }
     });
 }
 
@@ -657,55 +544,18 @@ function setupEventHandlers() {
 // INITIALIZATION
 // ============================================================================
 
-/**
- * Initialize the extension
- */
 jQuery(async () => {
     try {
         log('Initializing Memory Summarize extension');
 
-        // Initialize settings
         if (!extension_settings[extensionName]) {
             extension_settings[extensionName] = { ...defaultSettings };
         }
 
-        // Load settings UI
-        try {
-            await loadSettingsHTML();
-        } catch (error) {
-            logError('Failed to load settings HTML', error);
-        }
-
-        // Setup event handlers
+        await loadSettingsHTML();
         setupEventHandlers();
-
-        // Add message buttons
         addMessageButtons();
-
-        // Initial visual update
         updateAllMessageVisuals();
-
-        // Add slash command
-        if (window.registerSlashCommand) {
-            window.registerSlashCommand('summarize', async (args) => {
-                const messageIndex = parseInt(args.trim());
-                if (isNaN(messageIndex)) {
-                    toastr.error('Usage: /summarize <message_index>', 'Memory Summarize');
-                    return;
-                }
-                await summarizeMessage(messageIndex);
-            }, [], 'Summarize a specific message by index');
-
-            window.registerSlashCommand('summarize-all', async () => {
-                const context = getContext();
-                if (!context.chat) return;
-
-                for (let i = 0; i < context.chat.length; i++) {
-                    await summarizeMessage(i);
-                }
-                toastr.success('All messages summarized', 'Memory Summarize');
-            }, [], 'Summarize all messages in the current chat');
-        }
 
         log('Memory Summarize extension initialized successfully');
         console.log(`[${extensionName}] Loaded successfully v2.0.0`);
