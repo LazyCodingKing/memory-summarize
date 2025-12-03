@@ -10,7 +10,8 @@ const { extension_settings } = SillyTavern.getContext();
 
 // Extension metadata
 const extensionName = 'memory-summarize';
-const extensionFolderPath = `scripts/extensions/third-party/${extensionName}`;
+const extensionFolderPath = `third-party/${extensionName}`;
+
 
 // Default settings
 const defaultSettings = {
