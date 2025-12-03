@@ -1,8 +1,6 @@
-<!DOCTYPE html>
-<!-- Memory Summarize v2.0 - Configuration UI -->
-
 <div class="memory-config-wrapper">
-  <!-- Header -->
+  <input id="memory-import-file" type="file" style="display: none;" accept=".json">
+
   <div class="memory-config-header">
     <div class="memory-config-title">
       <i class="fa-solid fa-brain"></i>
@@ -13,7 +11,6 @@
     </button>
   </div>
 
-  <!-- Tabs -->
   <div class="memory-config-tabs">
     <button class="memory-config-tab active" data-tab="general">
       <i class="fa-solid fa-sliders"></i> General
@@ -35,13 +32,10 @@
     </button>
   </div>
 
-  <!-- Content -->
   <div class="memory-config-content">
     
-    <!-- ==================== GENERAL TAB ==================== -->
     <div class="memory-config-section active" data-section="general">
       
-      <!-- Enable/Disable -->
       <div class="memory-config-group">
         <div class="memory-config-group-title">
           <i class="fa-solid fa-power-off"></i>
@@ -67,19 +61,8 @@
             <input type="checkbox" id="memory-enable-new-chats" class="memory-checkbox">
           </div>
         </div>
-
-        <div class="memory-setting-row">
-          <div class="memory-setting-label">
-            <span>Use Global Toggle State</span>
-            <div class="memory-setting-hint">Share on/off state across all profiles</div>
-          </div>
-          <div class="memory-setting-control">
-            <input type="checkbox" id="memory-global-toggle" class="memory-checkbox">
-          </div>
-        </div>
       </div>
 
-      <!-- Memory Limits -->
       <div class="memory-config-group">
         <div class="memory-config-group-title">
           <i class="fa-solid fa-database"></i>
@@ -89,24 +72,30 @@
         <div class="memory-setting-row">
           <div class="memory-setting-label">
             <span>Short-Term Memory Limit</span>
-            <div class="memory-setting-hint">Maximum tokens for recent memories</div>
+            <div class="memory-setting-hint">Max context size</div>
           </div>
-          <div class="memory-setting-control">
+          <div class="memory-setting-control" style="display:flex; gap:10px;">
             <input type="number" id="memory-short-term-limit" class="memory-input" 
-                   min="100" max="10000" step="100">
-            <span class="memory-range-value"></span>
+                   min="0" max="99999" step="100">
+            <select id="memory-short-term-unit" class="memory-select" style="width: 80px;">
+                <option value="tokens">Tokens</option>
+                <option value="percent">%</option>
+            </select>
           </div>
         </div>
 
         <div class="memory-setting-row">
           <div class="memory-setting-label">
             <span>Long-Term Memory Limit</span>
-            <div class="memory-setting-hint">Maximum tokens for marked important memories</div>
+            <div class="memory-setting-hint">Max context size</div>
           </div>
-          <div class="memory-setting-control">
-            <input type="number" id="memory-long-term-limit" class="memory-input" 
-                   min="100" max="10000" step="100">
-            <span class="memory-range-value"></span>
+          <div class="memory-setting-control" style="display:flex; gap:10px;">
+             <input type="number" id="memory-long-term-limit" class="memory-input" 
+                   min="0" max="99999" step="100">
+             <select id="memory-long-term-unit" class="memory-select" style="width: 80px;">
+                <option value="tokens">Tokens</option>
+                <option value="percent">%</option>
+            </select>
           </div>
         </div>
 
@@ -118,74 +107,30 @@
           <div class="memory-setting-control">
             <input type="number" id="memory-message-threshold" class="memory-input" 
                    min="10" max="500" step="10">
-            <span class="memory-range-value"></span>
           </div>
         </div>
       </div>
-
-      <!-- Quick Actions -->
+      
       <div class="memory-config-group">
         <div class="memory-config-group-title">
           <i class="fa-solid fa-bolt"></i>
           Quick Actions
         </div>
-        
         <div style="display: flex; gap: 12px; flex-wrap: wrap;">
-          <button class="memory-btn" id="memory-summarize-all">
-            <i class="fa-solid fa-magic"></i>
-            Summarize All
-          </button>
-          <button class="memory-btn secondary" id="memory-edit-interface">
-            <i class="fa-solid fa-edit"></i>
-            Edit Memories
-          </button>
-          <button class="memory-btn secondary" id="memory-clear-all">
-            <i class="fa-solid fa-trash"></i>
-            Clear All
-          </button>
-          <button class="memory-btn secondary" id="memory-export">
-            <i class="fa-solid fa-download"></i>
-            Export
-          </button>
+          <button class="memory-btn" id="memory-summarize-all"><i class="fa-solid fa-magic"></i> Summarize All</button>
+          <button class="memory-btn secondary" id="memory-clear-all"><i class="fa-solid fa-trash"></i> Clear All</button>
         </div>
       </div>
     </div>
 
-    <!-- ==================== SUMMARIZATION TAB ==================== -->
     <div class="memory-config-section" data-section="summarization">
-      
-      <!-- Summary Prompt -->
       <div class="memory-config-group">
         <div class="memory-config-group-title">
-          <i class="fa-solid fa-file-lines"></i>
-          Summary Prompt
+          <i class="fa-solid fa-file-lines"></i> Summary Prompt
         </div>
-        
-        <div class="memory-setting-row">
-          <div class="memory-setting-label">
-            <span>Prompt Template</span>
-            <div class="memory-setting-hint">
-              Use {{message}}, {{char}}, {{user}} macros
-            </div>
-          </div>
-        </div>
-        
-        <textarea id="memory-summary-prompt" class="memory-textarea" 
-                  placeholder="Summarize the following message concisely..."></textarea>
-        
-        <div style="margin-top: 12px; display: flex; gap: 8px;">
-          <button class="memory-btn secondary" id="memory-reset-prompt">
-            <i class="fa-solid fa-undo"></i>
-            Reset to Default
-          </button>
-          <button class="memory-btn secondary" id="memory-test-prompt">
-            <i class="fa-solid fa-flask"></i>
-            Test Prompt
-          </button>
-        </div>
+        <textarea id="memory-summary-prompt" class="memory-textarea" placeholder="Summarize the following message..."></textarea>
       </div>
 
-      <!-- Generation Settings -->
       <div class="memory-config-group">
         <div class="memory-config-group-title">
           <i class="fa-solid fa-gears"></i>
@@ -194,411 +139,78 @@
         
         <div class="memory-setting-row">
           <div class="memory-setting-label">
-            <span>Max Summary Tokens</span>
-            <div class="memory-setting-hint">Maximum length for each summary</div>
+            <span>Connection Profile</span>
+            <div class="memory-setting-hint">API source for summarization</div>
           </div>
           <div class="memory-setting-control">
-            <input type="number" id="memory-max-tokens" class="memory-input" 
-                   min="50" max="500" step="10">
-          </div>
-        </div>
-
-        <div class="memory-setting-row">
-          <div class="memory-setting-label">
-            <span>Temperature</span>
-            <div class="memory-setting-hint">Lower = more focused (0.0 - 1.0)</div>
-          </div>
-          <div class="memory-setting-control">
-            <input type="number" id="memory-temperature" class="memory-input" 
-                   min="0" max="1" step="0.1">
-          </div>
-        </div>
-
-        <div class="memory-setting-row">
-          <div class="memory-setting-label">
-            <span>Use Separate Preset</span>
-            <div class="memory-setting-hint">Use different completion preset for summaries</div>
-          </div>
-          <div class="memory-setting-control">
-            <input type="checkbox" id="memory-separate-preset" class="memory-checkbox">
-          </div>
-        </div>
-
-        <div class="memory-setting-row" id="memory-preset-name-row" style="display: none;">
-          <div class="memory-setting-label">
-            <span>Preset Name</span>
-          </div>
-          <div class="memory-setting-control">
-            <select id="memory-preset-name" class="memory-select">
-              <option value="">Select preset...</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      <!-- Regeneration Settings -->
-      <div class="memory-config-group">
-        <div class="memory-config-group-title">
-          <i class="fa-solid fa-rotate"></i>
-          Regeneration
-        </div>
-        
-        <div class="memory-setting-row">
-          <div class="memory-setting-label">
-            <span>Re-summarize on Edit</span>
-            <div class="memory-setting-hint">Automatically update summary when message edited</div>
-          </div>
-          <div class="memory-setting-control">
-            <input type="checkbox" id="memory-resummary-edit" class="memory-checkbox">
-          </div>
-        </div>
-
-        <div class="memory-setting-row">
-          <div class="memory-setting-label">
-            <span>Re-summarize on Swipe</span>
-            <div class="memory-setting-hint">Update summary when swiping to different response</div>
-          </div>
-          <div class="memory-setting-control">
-            <input type="checkbox" id="memory-resummary-swipe" class="memory-checkbox">
-          </div>
-        </div>
-
-        <div class="memory-setting-row">
-          <div class="memory-setting-label">
-            <span>Incremental Updates</span>
-            <div class="memory-setting-hint">Only update changed portions (saves API calls)</div>
-          </div>
-          <div class="memory-setting-control">
-            <input type="checkbox" id="memory-incremental" class="memory-checkbox">
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ==================== INJECTION TAB ==================== -->
-    <div class="memory-config-section" data-section="injection">
-      
-      <!-- General Injection -->
-      <div class="memory-config-group">
-        <div class="memory-config-group-title">
-          <i class="fa-solid fa-arrow-right-to-bracket"></i>
-          Injection Settings
-        </div>
-        
-        <div class="memory-setting-row">
-          <div class="memory-setting-label">
-            <span>Start Injecting After</span>
-            <div class="memory-setting-hint">Number of messages before injecting summaries</div>
-          </div>
-          <div class="memory-setting-control">
-            <input type="number" id="memory-inject-after" class="memory-input" 
-                   min="0" max="20" step="1">
-          </div>
-        </div>
-
-        <div class="memory-setting-row">
-          <div class="memory-setting-label">
-            <span>Remove Summarized Messages</span>
-            <div class="memory-setting-hint">Remove original messages from context to save tokens</div>
-          </div>
-          <div class="memory-setting-control">
-            <input type="checkbox" id="memory-remove-messages" class="memory-checkbox">
-          </div>
-        </div>
-
-        <div class="memory-setting-row">
-          <div class="memory-setting-label">
-            <span>Static Memory Mode</span>
-            <div class="memory-setting-hint">Always put marked memories in long-term (may break chronology)</div>
-          </div>
-          <div class="memory-setting-control">
-            <input type="checkbox" id="memory-static-mode" class="memory-checkbox">
-          </div>
-        </div>
-
-        <div class="memory-setting-row">
-          <div class="memory-setting-label">
-            <span>Context-Aware Injection</span>
-            <div class="memory-setting-hint">Dynamically adjust injection based on context size</div>
-          </div>
-          <div class="memory-setting-control">
-            <input type="checkbox" id="memory-context-aware" class="memory-checkbox">
-          </div>
-        </div>
-      </div>
-
-      <!-- Short-Term Injection -->
-      <div class="memory-config-group">
-        <div class="memory-config-group-title">
-          <i class="fa-solid fa-clock"></i>
-          Short-Term Memory
-        </div>
-        
-        <div class="memory-setting-row">
-          <div class="memory-setting-label">
-            <span>Injection Position</span>
-            <div class="memory-setting-hint">Where to inject short-term memories</div>
-          </div>
-          <div class="memory-setting-control">
-            <select id="memory-short-position" class="memory-select">
-              <option value="do-not-inject">Do Not Inject</option>
-              <option value="after_scenario">After Scenario</option>
-              <option value="before_examples">Before Examples</option>
-              <option value="after_examples">After Examples</option>
-              <option value="top">Top of Context</option>
-              <option value="bottom">Bottom of Context</option>
+            <select id="memory-connection-profile" class="memory-select">
+                <option value="">Default (Use Current)</option>
             </select>
           </div>
         </div>
 
         <div class="memory-setting-row">
-          <div class="memory-setting-label">
-            <span>Include Character Messages</span>
-          </div>
-          <div class="memory-setting-control">
-            <input type="checkbox" id="memory-include-char" class="memory-checkbox">
-          </div>
-        </div>
-
-        <div class="memory-setting-row">
-          <div class="memory-setting-label">
-            <span>Include User Messages</span>
-          </div>
-          <div class="memory-setting-control">
-            <input type="checkbox" id="memory-include-user" class="memory-checkbox">
-          </div>
-        </div>
-
-        <div class="memory-setting-row">
-          <div class="memory-setting-label">
-            <span>Include System Messages</span>
-          </div>
-          <div class="memory-setting-control">
-            <input type="checkbox" id="memory-include-system" class="memory-checkbox">
-          </div>
-        </div>
-
-        <div class="memory-setting-row">
-          <div class="memory-setting-label">
-            <span>Include Hidden Messages</span>
-          </div>
-          <div class="memory-setting-control">
-            <input type="checkbox" id="memory-include-hidden" class="memory-checkbox">
-          </div>
-        </div>
-      </div>
-
-      <!-- Long-Term Injection -->
-      <div class="memory-config-group">
-        <div class="memory-config-group-title">
-          <i class="fa-solid fa-bookmark"></i>
-          Long-Term Memory
-        </div>
-        
-        <div class="memory-setting-row">
-          <div class="memory-setting-label">
-            <span>Injection Position</span>
-            <div class="memory-setting-hint">Where to inject long-term memories</div>
-          </div>
-          <div class="memory-setting-control">
-            <select id="memory-long-position" class="memory-select">
-              <option value="do-not-inject">Do Not Inject</option>
-              <option value="after_scenario">After Scenario</option>
-              <option value="before_examples">Before Examples</option>
-              <option value="after_examples">After Examples</option>
-              <option value="top">Top of Context</option>
-              <option value="bottom">Bottom of Context</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="memory-setting-row">
-          <div class="memory-setting-label">
-            <span>Long-Term Marker Info</span>
-            <div class="memory-setting-hint">
-              Click the 🧠 brain icon in message menu to mark for long-term storage
+            <div class="memory-setting-label">
+              <span>Max Summary Tokens</span>
+            </div>
+            <div class="memory-setting-control">
+              <input type="number" id="memory-max-tokens" class="memory-input" min="50" max="500" step="10">
             </div>
           </div>
-        </div>
       </div>
     </div>
 
-    <!-- ==================== AUTO-SUMMARIZE TAB ==================== -->
+    <div class="memory-config-section" data-section="injection">
+        <div class="memory-config-group">
+            <div class="memory-config-group-title">
+              <i class="fa-solid fa-arrow-right-to-bracket"></i> Injection Settings
+            </div>
+            <div class="memory-setting-row">
+              <div class="memory-setting-label"><span>Start Injecting After (Messages)</span></div>
+              <div class="memory-setting-control">
+                <input type="number" id="memory-inject-after" class="memory-input" min="0" max="20" step="1">
+              </div>
+            </div>
+            <div class="memory-setting-row">
+                <div class="memory-setting-label"><span>Remove Summarized Messages</span></div>
+                <div class="memory-setting-control"><input type="checkbox" id="memory-remove-messages" class="memory-checkbox"></div>
+            </div>
+            <div class="memory-setting-row">
+                <div class="memory-setting-label"><span>Include User Messages</span></div>
+                <div class="memory-setting-control"><input type="checkbox" id="memory-include-user" class="memory-checkbox"></div>
+            </div>
+            <div class="memory-setting-row">
+                <div class="memory-setting-label"><span>Include System Messages</span></div>
+                <div class="memory-setting-control"><input type="checkbox" id="memory-include-system" class="memory-checkbox"></div>
+            </div>
+        </div>
+    </div>
+
     <div class="memory-config-section" data-section="auto">
-      
-      <div class="memory-config-group">
-        <div class="memory-config-group-title">
-          <i class="fa-solid fa-magic"></i>
-          Auto-Summarization
-        </div>
-        
-        <div class="memory-setting-row">
-          <div class="memory-setting-label">
-            <span>Enable Auto-Summarize</span>
-            <div class="memory-setting-hint">Automatically summarize messages</div>
-          </div>
-          <div class="memory-setting-control">
-            <input type="checkbox" id="memory-auto-summarize" class="memory-checkbox">
-          </div>
-        </div>
-
-        <div class="memory-setting-row">
-          <div class="memory-setting-label">
-            <span>Summarization Timing</span>
-            <div class="memory-setting-hint">When to trigger auto-summarization</div>
-          </div>
-          <div class="memory-setting-control">
-            <select id="memory-timing" class="memory-select">
-              <option value="after_generation">After Generation</option>
-              <option value="before_generation">Before Generation</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="memory-setting-row">
-          <div class="memory-setting-label">
-            <span>Message Lag</span>
-            <div class="memory-setting-hint">Delay summarization by N messages</div>
-          </div>
-          <div class="memory-setting-control">
-            <input type="number" id="memory-message-lag" class="memory-input" 
-                   min="0" max="20" step="1">
-          </div>
-        </div>
-
-        <div class="memory-setting-row">
-          <div class="memory-setting-label">
-            <span>Batch Size</span>
-            <div class="memory-setting-hint">Number of messages to summarize at once</div>
-          </div>
-          <div class="memory-setting-control">
-            <input type="number" id="memory-batch-size" class="memory-input" 
-                   min="1" max="20" step="1">
-          </div>
-        </div>
-
-        <div class="memory-setting-row">
-          <div class="memory-setting-label">
-            <span>Smart Batching</span>
-            <div class="memory-setting-hint">Automatically optimize batch size</div>
-          </div>
-          <div class="memory-setting-control">
-            <input type="checkbox" id="memory-smart-batch" class="memory-checkbox">
-          </div>
-        </div>
-
-        <div class="memory-setting-row">
-          <div class="memory-setting-label">
-            <span>Delay Between Summaries (ms)</span>
-            <div class="memory-setting-hint">Pause between API calls (for rate limiting)</div>
-          </div>
-          <div class="memory-setting-control">
-            <input type="number" id="memory-delay" class="memory-input" 
-                   min="0" max="5000" step="100">
-          </div>
-        </div>
-      </div>
+         <div class="memory-config-group">
+            <div class="memory-config-group-title"><i class="fa-solid fa-magic"></i> Auto-Summarization</div>
+            <div class="memory-setting-row">
+                <div class="memory-setting-label"><span>Enable Auto-Summarize</span></div>
+                <div class="memory-setting-control"><input type="checkbox" id="memory-auto-summarize" class="memory-checkbox"></div>
+            </div>
+         </div>
     </div>
 
-    <!-- ==================== DISPLAY TAB ==================== -->
     <div class="memory-config-section" data-section="display">
-      
-      <div class="memory-config-group">
-        <div class="memory-config-group-title">
-          <i class="fa-solid fa-palette"></i>
-          Visual Display
-        </div>
-        
-        <div class="memory-setting-row">
-          <div class="memory-setting-label">
-            <span>Display Memories</span>
-            <div class="memory-setting-hint">Show summaries below messages</div>
-          </div>
-          <div class="memory-setting-control">
-            <input type="checkbox" id="memory-display" class="memory-checkbox">
-          </div>
-        </div>
-      </div>
-
-      <div class="memory-config-group">
-        <div class="memory-config-group-title">
-          <i class="fa-solid fa-paintbrush"></i>
-          Color Scheme
-        </div>
-        
-        <div class="memory-setting-row">
-          <div class="memory-setting-label">
-            <span>Short-Term Memory Color</span>
-          </div>
-          <div class="memory-setting-control">
-            <input type="color" id="memory-color-short" class="memory-input" 
-                   value="#22c55e">
-          </div>
-        </div>
-
-        <div class="memory-setting-row">
-          <div class="memory-setting-label">
-            <span>Long-Term Memory Color</span>
-          </div>
-          <div class="memory-setting-control">
-            <input type="color" id="memory-color-long" class="memory-input" 
-                   value="#3b82f6">
-          </div>
-        </div>
-
-        <div class="memory-setting-row">
-          <div class="memory-setting-label">
-            <span>Out of Context Color</span>
-          </div>
-          <div class="memory-setting-control">
-            <input type="color" id="memory-color-old" class="memory-input" 
-                   value="#ef4444">
-          </div>
-        </div>
-
-        <div class="memory-setting-row">
-          <div class="memory-setting-label">
-            <span>Excluded Memory Color</span>
-          </div>
-          <div class="memory-setting-control">
-            <input type="color" id="memory-color-excluded" class="memory-input" 
-                   value="#9ca3af">
-          </div>
-        </div>
-      </div>
+         <div class="memory-config-group">
+            <div class="memory-config-group-title"><i class="fa-solid fa-palette"></i> Visual Display</div>
+            <div class="memory-setting-row">
+                <div class="memory-setting-label"><span>Display Memories</span></div>
+                <div class="memory-setting-control"><input type="checkbox" id="memory-display" class="memory-checkbox"></div>
+            </div>
+         </div>
     </div>
 
-    <!-- ==================== ADVANCED TAB ==================== -->
     <div class="memory-config-section" data-section="advanced">
-      
-      <div class="memory-config-group">
-        <div class="memory-config-group-title">
-          <i class="fa-solid fa-flask"></i>
-          Debug & Development
-        </div>
-        
-        <div class="memory-setting-row">
-          <div class="memory-setting-label">
-            <span>Debug Mode</span>
-            <div class="memory-setting-hint">Enable verbose console logging</div>
-          </div>
-          <div class="memory-setting-control">
-            <input type="checkbox" id="memory-debug" class="memory-checkbox">
-          </div>
-        </div>
-
-        <div style="margin-top: 16px;">
-          <button class="memory-btn secondary" id="memory-open-console">
-            <i class="fa-solid fa-terminal"></i>
-            Open Browser Console
-          </button>
-        </div>
-      </div>
-
       <div class="memory-config-group">
         <div class="memory-config-group-title">
           <i class="fa-solid fa-user-gear"></i>
-          Configuration Profiles
+          Profiles
         </div>
         
         <div class="memory-setting-row">
@@ -613,59 +225,19 @@
         </div>
 
         <div style="display: flex; gap: 8px; margin-top: 12px;">
-          <button class="memory-btn secondary" id="memory-save-profile">
-            <i class="fa-solid fa-save"></i>
-            Save Profile
-          </button>
-          <button class="memory-btn secondary" id="memory-new-profile">
-            <i class="fa-solid fa-plus"></i>
-            New Profile
-          </button>
-          <button class="memory-btn danger" id="memory-delete-profile">
-            <i class="fa-solid fa-trash"></i>
-            Delete Profile
-          </button>
-        </div>
-      </div>
-
-      <div class="memory-config-group">
-        <div class="memory-config-group-title">
-          <i class="fa-solid fa-wrench"></i>
-          Maintenance
-        </div>
-        
-        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-          <button class="memory-btn secondary" id="memory-validate">
-            <i class="fa-solid fa-check-circle"></i>
-            Validate Memories
-          </button>
-          <button class="memory-btn secondary" id="memory-optimize">
-            <i class="fa-solid fa-compress"></i>
-            Optimize Storage
-          </button>
-          <button class="memory-btn danger" id="memory-reset-settings">
-            <i class="fa-solid fa-undo"></i>
-            Reset All Settings
-          </button>
+          <button class="memory-btn secondary" id="memory-save-profile"><i class="fa-solid fa-save"></i> Save</button>
+          <button class="memory-btn secondary" id="memory-new-profile"><i class="fa-solid fa-plus"></i> New</button>
         </div>
       </div>
     </div>
 
   </div>
 
-  <!-- Footer -->
   <div class="memory-config-footer">
-    <div class="memory-version">
-      Memory Summarize v2.0
-    </div>
+    <div class="memory-version">Memory Summarize v2.0</div>
     <div class="memory-config-actions">
-      <button class="memory-btn secondary" id="memory-cancel-btn">
-        Cancel
-      </button>
-      <button class="memory-btn" id="memory-save-btn">
-        <i class="fa-solid fa-save"></i>
-        Save Settings
-      </button>
+      <button class="memory-btn secondary" id="memory-cancel-btn">Cancel</button>
+      <button class="memory-btn" id="memory-save-btn"><i class="fa-solid fa-save"></i> Save Settings</button>
     </div>
   </div>
 </div>
