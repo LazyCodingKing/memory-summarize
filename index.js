@@ -1,7 +1,7 @@
 /**
  * Memory Summarize v2.0 - Main Extension File
  * Fixed & Merged for SillyTavern
- * Author: LazyCodingKing
+ * Author: LazyCodingKing / Qvink
  */
 
 // Get SillyTavern context API
@@ -100,7 +100,6 @@ async function setupUI() {
         console.log(`[${extensionName}] Setting up UI...`);
 
         // Add extension button to top bar (Standard SillyTavern Extensions Menu)
-        // We create a container to ensure consistent styling
         const buttonHtml = `
             <div id="memory-summarize-button" class="list-group-item flex-container flex-gap-10" title="Memory Summarize v2.0">
                 <i class="fa-solid fa-brain"></i> 
@@ -116,6 +115,7 @@ async function setupUI() {
         // Load config HTML
         let configHTML = '';
         try {
+            // Attempt to load local config.html, fallback if missing
             const response = await fetch(`${extensionFolderPath}/config.html`);
             if (response.ok) {
                 configHTML = await response.text();
@@ -133,7 +133,10 @@ async function setupUI() {
                  ${configHTML}
             </div>`;
 
-        $('body').append(popupHTML);
+        // Only append if it doesn't exist
+        if ($('#memory-config-popup').length === 0) {
+            $('body').append(popupHTML);
+        }
 
         // Bind all the UI actions
         bindSettingsToUI();
@@ -157,8 +160,7 @@ function registerEventListeners() {
 
     eventSource.on(event_types.MESSAGE_RECEIVED, (data) => {
         if (settings.enabled && settings.autoSummarize) {
-            // Placeholder for processing logic
-            console.log(`[${extensionName}] Message received, ready to summarize.`);
+            console.log(`[${extensionName}] Message received. Auto-summarize logic pending.`);
         }
     });
 
@@ -191,7 +193,7 @@ function toggleConfigPopup() {
     }
 }
 
-/* ==================== UI HELPER FUNCTIONS (Merged) ==================== */
+/* ==================== UI HELPER FUNCTIONS ==================== */
 
 function bindSettingsToUI() {
     // Basic Settings
@@ -277,7 +279,6 @@ function updateMemoryDisplay() {
         $('.message-memory').remove();
         return;
     }
-    // (Actual logic would loop through chat messages here)
 }
 
 function createDefaultConfigHTML() {
@@ -287,7 +288,7 @@ function createDefaultConfigHTML() {
     </div>`;
 }
 
-// Export for debugging/global access (Standardized Case)
+// Export for debugging/global access
 window.memorySummarize = {
     settings,
     memoryCache,
@@ -295,7 +296,7 @@ window.memorySummarize = {
     toggleConfigPopup
 };
 
-// Initialize when jQuery is ready (Standard ST Loader)
+// Initialize when jQuery is ready
 jQuery(async () => {
     await init();
 });
