@@ -1,25 +1,58 @@
-/** 
- * Memory Summarize v2.0 - Main Extension File (FIXED)
- * Updated for SillyTavern 1.12+ (2025)
- * No longer requires deprecated Extras API 
+/**
+ * Memory Summarize v2.0 - Main Extension File
+ * Corrected for SillyTavern 1.14+ (2025)
+ * Uses proper SillyTavern.getContext() API instead of direct imports
  */
 
-import { eventSource, event_types, saveSettingsDebounced, callPopup, getRequestHeaders } from '../../../script.js';
-import { extension_settings, getContext } from '../../extensions.js';
-import { power_user } from '../../power-user.js';
+// Get context using the proper SillyTavern API
+const { eventSource, event_types, saveSettingsDebounced, callPopup, getContext, extensionSettings } = SillyTavern.getContext();
 
 // Extension metadata
 const extensionName = 'memory-summarize';
 const extensionFolderPath = `scripts/extensions/third-party/${extensionName}`;
 
-// Default settings (same as before)
+// Default settings
 const defaultSettings = {
   enabled: true,
   autoSummarize: true,
-  // ... rest of settings
+  summarizeTiming: 'after_generation',
+  shortTermLimit: 2000,
+  longTermLimit: 4000,
+  messageThreshold: 50,
+  summaryPrompt: 'Summarize the following message concisely in 1-2 sentences:\n\n{{message}}',
+  summaryMaxTokens: 150,
+  summaryTemperature: 0.1,
+  useSeparatePreset: false,
+  presetName: '',
+  batchSize: 5,
+  delayBetweenSummaries: 1000,
+  messageLag: 0,
+  displayMemories: true,
+  colorShortTerm: '#22c55e',
+  colorLongTerm: '#3b82f6',
+  colorOutOfContext: '#ef4444',
+  colorExcluded: '#9ca3af',
+  startInjectingAfter: 3,
+  removeMessagesAfterThreshold: false,
+  staticMemoryMode: false,
+  includeCharacterMessages: true,
+  includeUserMessages: false,
+  includeHiddenMessages: false,
+  includeSystemMessages: false,
+  shortTermInjectionPosition: 'after_scenario',
+  longTermInjectionPosition: 'after_scenario',
+  debugMode: false,
+  enableInNewChats: true,
+  useGlobalToggleState: false,
+  incrementalUpdates: true,
+  smartBatching: true,
+  contextAwareInjection: true,
+  profiles: {},
+  activeProfile: 'default'
 };
 
-let settings = defaultSettings;
+// Extension state
+let settings = { ...defaultSettings };
 let memoryCache = new Map();
 let isProcessing = false;
 let processingQueue = [];
@@ -31,11 +64,11 @@ async function init() {
   console.log(`[${extensionName}] Initializing Memory Summarize v2.0`);
   
   try {
-    // Load settings
-    if (!extension_settings[extensionName]) {
-      extension_settings[extensionName] = defaultSettings;
+    // Load settings from extension settings
+    if (!extensionSettings[extensionName]) {
+      extensionSettings[extensionName] = defaultSettings;
     }
-    settings = extension_settings[extensionName];
+    settings = extensionSettings[extensionName];
 
     // Apply CSS variables
     applyCSSVariables();
@@ -62,11 +95,11 @@ async function init() {
 }
 
 /**
- * Setup UI elements - FIXED VERSION
+ * Setup UI elements - FIXED with proper HTML
  */
 async function setupUI() {
   try {
-    // Add extension button to top bar - FIXED: proper HTML
+    // Add extension button to top bar - FIXED: proper HTML template
     const button = $(`<i id="memory-summarize-button" class="fa-solid fa-brain" title="Memory Summarize v2.0"></i>`);
     button.on('click', () => toggleConfigPopup());
     $('#extensionsMenu').append(button);
@@ -79,7 +112,6 @@ async function setupUI() {
       configHTML = await response.text();
     } catch (fetchErr) {
       console.warn(`[${extensionName}] Failed to load config.html:`, fetchErr);
-      console.log(`[${extensionName}] Using fallback configuration UI`);
       configHTML = createDefaultConfigHTML();
     }
 
@@ -110,15 +142,17 @@ async function setupUI() {
  */
 function registerEventListeners() {
   try {
-    // Listen for generation events
-    eventSource.addEventListener(event_types.MESSAGE_RECEIVED, () => {
+    // Listen for message received events
+    eventSource.on(event_types.MESSAGE_RECEIVED, (data) => {
       if (settings.enabled && settings.autoSummarize) {
-        onMessageReceived();
+        onMessageReceived(data);
       }
     });
 
-    eventSource.addEventListener(event_types.MESSAGE_SENT, () => {
-      console.log(`[${extensionName}] Message sent event triggered`);
+    eventSource.on(event_types.MESSAGE_SENT, (data) => {
+      if (settings.debugMode) {
+        console.log(`[${extensionName}] Message sent event triggered`);
+      }
     });
 
     console.log(`[${extensionName}] Event listeners registered`);
@@ -132,7 +166,6 @@ function registerEventListeners() {
  */
 function registerSlashCommands() {
   try {
-    // Add slash commands if API available
     if (window.SlashCommandParser) {
       window.SlashCommandParser.addCommand('memsum', async (args) => {
         await triggerManualSummarization();
@@ -162,13 +195,13 @@ function setupContextInjection() {
  */
 async function loadMemories() {
   try {
-    const context = getContext();
-    if (!context || !context.chatId) {
+    const ctx = getContext();
+    if (!ctx || !ctx.chatId) {
       console.warn(`[${extensionName}] No active chat context`);
       return;
     }
     
-    console.log(`[${extensionName}] Memories loaded for chat: ${context.chatId}`);
+    console.log(`[${extensionName}] Memories loaded for chat: ${ctx.chatId}`);
   } catch (err) {
     console.error(`[${extensionName}] Error loading memories:`, err);
   }
@@ -177,9 +210,11 @@ async function loadMemories() {
 /**
  * Handle received messages
  */
-async function onMessageReceived() {
+async function onMessageReceived(data) {
   try {
-    console.log(`[${extensionName}] Processing received message`);
+    if (settings.debugMode) {
+      console.log(`[${extensionName}] Processing received message`);
+    }
     // Add your summarization logic here
   } catch (err) {
     console.error(`[${extensionName}] Error in onMessageReceived:`, err);
@@ -204,7 +239,9 @@ async function triggerManualSummarization() {
 function toggleConfigPopup() {
   try {
     const popup = $('#memory-config-popup');
-    popup.toggleClass('visible');
+    if (popup.length) {
+      popup.toggleClass('visible');
+    }
   } catch (err) {
     console.error(`[${extensionName}] Error toggling popup:`, err);
   }
@@ -237,20 +274,24 @@ function createDefaultConfigHTML() {
           <input type="checkbox" id="enable-extension" class="memory-checkbox"> 
           Enable Memory Summarize
         </label>
-        <small>Config template not found. Using fallback UI.</small>
+        <p><small>Config template not found. Using fallback UI. Check browser console for errors.</small></p>
       </div>
     </div>
   `;
 }
 
-// Initialize when document is ready
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', init);
+// Initialize when APP is ready
+if (eventSource) {
+  eventSource.once(event_types.APP_READY, () => {
+    console.log(`[${extensionName}] APP_READY event received, initializing...`);
+    init();
+  });
 } else {
+  console.warn(`[${extensionName}] EventSource not available, calling init immediately`);
   init();
 }
 
-// Export for debugging
+// Export for debugging/global access
 window.memorySummarize = {
   settings,
   memoryCache,
