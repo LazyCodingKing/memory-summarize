@@ -66,15 +66,25 @@ async function init() {
     console.log(`[${extensionName}] Starting initialization...`);
 
     try {
-        // Get SillyTavern context - DO THIS INSIDE THE TRY BLOCK
+        // Get SillyTavern context
         const context = SillyTavern.getContext();
+        
+        // Check if we have the context
+        if (!context) {
+            console.error(`[${extensionName}] SillyTavern context not available`);
+            return;
+        }
+
         const { eventSource, event_types, saveSettingsDebounced, extension_settings } = context;
 
-        // Safety Check: If settings aren't loaded yet, wait for the event
-        if (!extension_settings || typeof extension_settings === 'undefined') {
-            console.log(`[${extensionName}] Settings not ready yet. Waiting for extension_settings_loaded event...`);
-            eventSource.once(event_types.EXTENSION_SETTINGS_LOADED, init);
-            return; 
+        // More robust check - wait if extension_settings doesn't exist yet OR is an empty object
+        if (!extension_settings) {
+            console.log(`[${extensionName}] extension_settings is null/undefined. Waiting for EXTENSION_SETTINGS_LOADED...`);
+            eventSource.once(event_types.EXTENSION_SETTINGS_LOADED, () => {
+                console.log(`[${extensionName}] EXTENSION_SETTINGS_LOADED event received, retrying init...`);
+                init();
+            });
+            return;
         }
 
         // Make context available globally for this extension
@@ -84,12 +94,13 @@ async function init() {
         if (!extension_settings[extensionName]) {
             console.log(`[${extensionName}] Creating default settings...`);
             extension_settings[extensionName] = { ...defaultSettings };
+            saveSettingsDebounced();
         }
         
         // Link our local 'settings' variable to the global object
         settings = extension_settings[extensionName];
 
-        console.log(`[${extensionName}] Settings loaded:`, settings);
+        console.log(`[${extensionName}] Settings loaded successfully`);
 
         // Apply CSS variables
         applyCSSVariables();
@@ -121,11 +132,17 @@ async function setupUI() {
     try {
         console.log(`[${extensionName}] Setting up UI...`);
 
+        // Check if button already exists
+        if ($('#memory-summarize-button').length > 0) {
+            console.log(`[${extensionName}] UI already exists, skipping setup`);
+            return;
+        }
+
         // Add extension button to top bar (Standard SillyTavern Extensions Menu)
         const buttonHtml = `
             <div id="memory-summarize-button" class="list-group-item flex-container flexGap5" title="Memory Summarize v2.0">
                 <div class="fa-solid fa-brain extensionsMenuExtensionButton"></div> 
-                <span data-i18n="Memory Summarize">Memory Summarize</span>
+                <span>Memory Summarize</span>
             </div>`;
         
         const button = $(buttonHtml);
@@ -179,7 +196,10 @@ async function setupUI() {
  */
 function registerEventListeners() {
     const { eventSource, event_types } = window.memorySummarizeContext;
-    if (!eventSource || !event_types) return;
+    if (!eventSource || !event_types) {
+        console.error(`[${extensionName}] Cannot register events - context not available`);
+        return;
+    }
 
     eventSource.on(event_types.MESSAGE_RECEIVED, (data) => {
         if (settings.enabled && settings.autoSummarize) {
@@ -188,20 +208,31 @@ function registerEventListeners() {
     });
 
     eventSource.on(event_types.CHAT_CHANGED, () => {
+        console.log(`[${extensionName}] Chat changed event`);
         updateMemoryDisplay();
     });
+
+    console.log(`[${extensionName}] Event listeners registered`);
 }
 
 /**
  * Register slash commands
  */
 function registerSlashCommands() {
-    if (window.SlashCommandParser) {
-        window.SlashCommandParser.addCommand('memsum', async (args) => {
-            console.log(`[${extensionName}] Manual summarization triggered`);
-            return 'Memory summarization triggered (Logic Pending)';
-        }, [], '<span class="monospace">/memsum</span> – Manually trigger memory summarization', true, true);
+    if (!window.SlashCommandParser) {
+        console.warn(`[${extensionName}] SlashCommandParser not available`);
+        return;
     }
+
+    window.SlashCommandParser.addCommand('memsum', async (args) => {
+        console.log(`[${extensionName}] Manual summarization triggered`);
+        if (typeof toastr !== 'undefined') {
+            toastr.info('Memory summarization triggered (Logic Pending)');
+        }
+        return 'Memory summarization triggered (Logic Pending)';
+    }, [], '<span class="monospace">/memsum</span> – Manually trigger memory summarization', true, true);
+
+    console.log(`[${extensionName}] Slash commands registered`);
 }
 
 /**
@@ -331,9 +362,11 @@ window.memorySummarize = {
 };
 
 // Initialize when the script loads
-(async function() {
+(function() {
     console.log(`[${extensionName}] Extension script loaded, scheduling initialization...`);
     
-    // Try to initialize immediately
-    await init();
+    // Use setTimeout to ensure SillyTavern is fully ready
+    setTimeout(() => {
+        init();
+    }, 100);
 })();
