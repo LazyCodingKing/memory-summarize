@@ -1,25 +1,32 @@
 // ============================================================================
-// IMPORTS (Fixed to use Absolute Paths)
+// IMPORTS: Absolute Paths (Fixes your MIME/Folder Depth error)
 // ============================================================================
 import {
     saveSettingsDebounced,
-    generateRaw, 
-    eventSource,
-    event_types,
+    generateRaw,
     getRequestHeaders,
-} from '../../../../script.js';
+} from '/scripts/script.js'; 
 
-import { 
-    extension_settings, 
-    getContext 
-} from '../../../extensions.js';
+import {
+    extension_settings,
+    getContext,
+    loadExtensionSettings,
+} from '/scripts/extensions.js';
+
+// ============================================================================
+// SETUP: Use Global Context (Like NoAss does - Best Practice)
+// ============================================================================
+const context = SillyTavern.getContext();
+const eventSource = context.eventSource;
+const event_types = context.event_types;
+
 // ============================================================================
 // CONSTANTS & CONFIG
 // ============================================================================
 
 const extensionName = 'memory-summarize';
 const summaryDivClass = 'qvink_memory_text';
-const MAX_SUMMARY_WORDS = 350; // TOKEN SAVER: Hard limit
+const MAX_SUMMARY_WORDS = 350; // TOKEN SAVER: Hard limit on summary size
 
 // Default settings
 const defaultSettings = {
@@ -27,7 +34,7 @@ const defaultSettings = {
     autoSummarize: true,
     messageThreshold: 20, // Summarize every 20 messages
     master_summary: "",   // The "Rolling Memory" lives here
-    debugMode: true       // Enable logs so we can see what's happening
+    debugMode: true
 };
 
 // ============================================================================
@@ -37,6 +44,7 @@ function cleanTextForSummary(text) {
     if (!text) return "";
 
     // 1. SPECIFIC KILL LIST: Remove UI Stats / Info Boxes
+    // Adjust these regexes if your preset uses different headers.
     text = text.replace(/User's Stats[\s\S]*?(?=\n\n|$)/g, "");
     text = text.replace(/Info Box[\s\S]*?(?=\n\n|$)/g, "");
     text = text.replace(/Present Characters[\s\S]*?(?=\n\n|$)/g, "");
@@ -44,7 +52,7 @@ function cleanTextForSummary(text) {
     // 2. UNWRAP HTML: Handle "Bulletin Boards"
     text = text.replace(/```\w*\n?/g, "").replace(/```/g, "");
 
-    // 3. STRIP TAGS: Remove HTML tags but keep text
+    // 3. STRIP TAGS: Remove <div...>, <br>, </span> but keep text
     text = text.replace(/<[^>]*>/g, " ");
 
     // 4. CLEANUP: Squash extra spaces
@@ -58,8 +66,7 @@ function cleanTextForSummary(text) {
 // ============================================================================
 
 async function triggerRollingSummarize() {
-    const context = getContext();
-    const chat = context.chat;
+    const chat = context.chat; // Grab chat from global context
     const threshold = extension_settings[extensionName].messageThreshold || 20;
 
     // Only grab the recent messages
@@ -70,7 +77,7 @@ async function triggerRollingSummarize() {
         return `${msg.name}: ${cleanTextForSummary(msg.mes)}`;
     }).join('\n');
 
-    if (newEventsText.length < 50) return; // Too short
+    if (newEventsText.length < 50) return; // Too short to summarize
 
     // 2. Get the Old Memory
     let currentMemory = extension_settings[extensionName].master_summary || "No prior history.";
@@ -107,6 +114,8 @@ async function triggerRollingSummarize() {
             extension_settings[extensionName].master_summary = newSummary.trim();
             saveSettingsDebounced();
             console.log(`[${extensionName}] Memory Updated!`);
+            
+            // Visual Feedback
             toastr.success("Memory Updated", "Rolling Summary");
         }
     } catch (e) {
@@ -129,7 +138,8 @@ function memory_intercept_messages(chat, ...args) {
             mes: `[STORY SUMMARY SO FAR: ${memory}]`,
             force_avatar: "system.png"
         };
-        // Insert at Top
+        
+        // Insert at Top of context
         chat.unshift(memoryBlock);
     }
 }
@@ -151,11 +161,11 @@ jQuery(async function () {
     // 2. Register Listeners
     if (eventSource) {
         eventSource.on(event_types.MESSAGE_RECEIVED, async () => {
-            const context = getContext();
+            const context = SillyTavern.getContext(); // Refresh context
             const msgCount = context.chat.length;
             const threshold = extension_settings[extensionName].messageThreshold;
             
-            // Check if we hit the threshold (e.g. 20, 40, 60)
+            // Trigger check
             if (msgCount > 0 && msgCount % threshold === 0) {
                 await triggerRollingSummarize();
             }
@@ -165,5 +175,5 @@ jQuery(async function () {
     // 3. Expose Global Function for Manifest
     window.memory_intercept_messages = memory_intercept_messages;
 
-    console.log(`[${extensionName}] Ready. Using Absolute Imports. 🚀`);
+    console.log(`[${extensionName}] Ready. 🚀`);
 });
