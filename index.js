@@ -3,15 +3,16 @@
 // ============================================================================
 import {
     saveSettingsDebounced,
-    generateRaw,
+    generateRaw, 
+    eventSource,
+    event_types,
     getRequestHeaders,
-} from '/scripts/script.js'; 
+} from '../../../../script.js';
 
-import {
-    extension_settings,
-    getContext,
-    loadExtensionSettings,
-} from '/scripts/extensions.js';
+import { 
+    extension_settings, 
+    getContext 
+} from '../../../extensions.js';
 
 // ============================================================================
 // SETUP: Use Global Context (Like NoAss does - Best Practice)
