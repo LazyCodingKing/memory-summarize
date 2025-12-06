@@ -1,150 +1,207 @@
-<div id="qvink_memory_settings" class="qvink_memory_settings_content">
-  <div class="inline-drawer">
-    <div class="inline-drawer-toggle inline-drawer-header">
-      <div class="flex-container alignitemscenter margin0">
-        <b id="qvink_title" title="Message Summarize">Qvink Memory</b>
-        <i id="qvink_popout_button" title="Move config to floating popout" class="fa-solid fa-window-restore menu_button margin0"></i>
-      </div>
-      <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+<div id="memory-summarize-settings" class="memory-summarize-content">
+  <div class="memory-summarize-panel">
+    <h3>🧠 Memory Summarize Settings</h3>
+    
+    <!-- Enable/Disable -->
+    <div class="settings-row">
+      <label for="ms-enabled">
+        <input type="checkbox" id="ms-enabled" class="settings-input">
+        <span>Enable Memory Summarization</span>
+      </label>
     </div>
 
-    <div class="inline-drawer-content">
-      <div class="qvink_memory_settings_content">
-        <hr>
-        <div class="flex-container justifyspacebetween alignitemscenter">
-          <button id="toggle_chat_memory" class="menu_button flex2"><span>Toggle Memory</span></button>
-          <button id="refresh_memory" class="menu_button fa-solid fa-sync margin0" title="Force Update Now"></button>
-        </div>
+    <!-- Auto-Summarize -->
+    <div class="settings-row">
+      <label for="ms-auto-summarize">
+        <input type="checkbox" id="ms-auto-summarize" class="settings-input">
+        <span>Auto-Summarize Messages</span>
+      </label>
+    </div>
 
-        <hr>
-        <h4 class="textAlignCenter">Summarization Config</h4>
+    <!-- Summary Length -->
+    <div class="settings-row">
+      <label for="ms-length">
+        Summary Length:
+        <select id="ms-length" class="settings-input">
+          <option value="short">Short (30%)</option>
+          <option value="medium" selected>Medium (50%)</option>
+          <option value="long">Long (70%)</option>
+        </select>
+      </label>
+    </div>
 
-        <label class="checkbox_label">
-          <input id="auto_summarize" type="checkbox" />
-          <span>Auto Summarize</span>
-        </label>
+    <!-- Max History -->
+    <div class="settings-row">
+      <label for="ms-max-history">
+        Max Messages in Buffer:
+        <input type="number" id="ms-max-history" class="settings-input" value="50" min="10" max="500">
+      </label>
+    </div>
 
-        <div class="flex-container justifyspacebetween alignitemscenter" style="margin-top:8px;">
-          <label style="display:flex;align-items:center;" title="How many messages to wait before summarizing again (e.g. 20)">
-            <span style="margin-right:.5em">Update Frequency</span>
-            <input id="message_threshold" type="number" min="1" placeholder="20" style="width:7em" />
-          </label>
+    <!-- Update Interval -->
+    <div class="settings-row">
+      <label for="ms-update-interval">
+        Auto-Summarize Interval (minutes):
+        <input type="number" id="ms-update-interval" class="settings-input" value="5" min="1" max="60">
+      </label>
+    </div>
 
-          <label style="display:flex;align-items:center;" title="Maximum word count for the rolling summary">
-            <span style="margin-right:.5em">Max Summary Words</span>
-            <input id="max_summary_words" type="number" min="50" placeholder="350" style="width:7em" />
-          </label>
-        </div>
+    <!-- Buttons -->
+    <div class="settings-row button-row">
+      <button id="ms-summarize-btn" class="btn-primary">📝 Summarize Now</button>
+      <button id="ms-reset-btn" class="btn-danger">🔄 Reset Buffer</button>
+    </div>
 
-        <hr>
-        <h4 class="textAlignCenter">Misc.</h4>
+    <!-- Status Display -->
+    <div id="ms-status" class="status-display">
+      <strong>Status:</strong> <span id="ms-status-text">Ready</span>
+    </div>
 
-        <label class="checkbox_label">
-          <input id="debug_mode" type="checkbox" />
-          <span>Debug Mode</span>
-        </label>
-
-        <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:8px;">
-          <button id="revert_settings" class="menu_button">Revert</button>
-          <button id="save_settings" class="menu_button">Save</button>
-        </div>
-        <hr>
+    <!-- Statistics -->
+    <div class="stats-display">
+      <div class="stat-item">
+        <strong>Buffer Size:</strong> <span id="ms-buffer-count">0</span> messages
       </div>
+      <div class="stat-item">
+        <strong>Last Summary:</strong> <span id="ms-last-summary">Never</span>
+      </div>
+    </div>
+
+    <!-- Debug -->
+    <hr>
+    <div class="settings-row">
+      <label for="ms-debug">
+        <input type="checkbox" id="ms-debug" class="settings-input">
+        <span>Debug Mode</span>
+      </label>
     </div>
   </div>
 </div>
 
-<script>
-(function () {
-  function safeById(id) { return document.getElementById(id); }
+<style>
+.memory-summarize-panel {
+  padding: 15px;
+  border-radius: 8px;
+  margin: 10px 0;
+  background: var(--SmartThemeBlurTintColor, #f5f5f5);
+  border: 1px solid var(--bg3, #ddd);
+}
 
-  // Elements (Updated IDs)
-  const EL = {
-    auto_summarize: safeById('auto_summarize'),
-    message_threshold: safeById('message_threshold'),      // WAS: short_term_context_limit
-    max_summary_words: safeById('max_summary_words'),      // WAS: long_term_context_limit
-    debug_mode: safeById('debug_mode'),
-    save_settings: safeById('save_settings'),
-    revert_settings: safeById('revert_settings'),
-    refresh_memory: safeById('refresh_memory'),
-    toggle_chat_memory: safeById('toggle_chat_memory')
-  };
+.memory-summarize-panel h3 {
+  margin-top: 0;
+  margin-bottom: 15px;
+  color: var(--text-color, #333);
+}
 
-  // Default UI values
-  const UI_DEFAULTS = {
-    auto_summarize: true,
-    message_threshold: 20,
-    max_summary_words: 350,
-    debug_mode: false
-  };
+.settings-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 12px;
+  gap: 10px;
+}
 
-  // Populate UI from settings object
-  function populateUI(settings = {}) {
-    const s = Object.assign({}, UI_DEFAULTS, settings || {});
-    if (EL.auto_summarize) EL.auto_summarize.checked = !!s.auto_summarize;
-    if (EL.message_threshold) EL.message_threshold.value = s.message_threshold ?? 20;
-    if (EL.max_summary_words) EL.max_summary_words.value = s.max_summary_words ?? 350;
-    if (EL.debug_mode) EL.debug_mode.checked = !!s.debug_mode;
-  }
+.settings-row label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  cursor: pointer;
+}
 
-  // Read UI values to settings object
-  function readUI() {
-    return {
-      auto_summarize: !!(EL.auto_summarize && EL.auto_summarize.checked),
-      message_threshold: parseInt(EL.message_threshold?.value || 20, 10),
-      max_summary_words: parseInt(EL.max_summary_words?.value || 350, 10),
-      debug_mode: !!(EL.debug_mode && EL.debug_mode.checked)
-    };
-  }
+.settings-row input[type="checkbox"],
+.settings-row input[type="number"],
+.settings-row select {
+  padding: 5px 8px;
+  border: 1px solid var(--bg3, #ccc);
+  border-radius: 4px;
+  background: var(--SmartThemeBlurTintColor, white);
+  color: var(--text-color, #333);
+}
 
-  // Wiring
-  function wireToAPI(api) {
-    api.getSettings().then(populateUI).catch(() => populateUI());
+.settings-row input[type="checkbox"] {
+  cursor: pointer;
+  width: 18px;
+  height: 18px;
+}
 
-    if (EL.save_settings) {
-      EL.save_settings.addEventListener('click', async () => {
-        const s = readUI();
-        await api.setSettings(s);
-        if (s.debug_mode) console.log('[UI] Settings saved:', s);
-      });
-    }
+.settings-row input[type="number"] {
+  width: 80px;
+  margin-left: auto;
+}
 
-    if (EL.revert_settings) {
-      EL.revert_settings.addEventListener('click', async () => {
-        const fresh = await api.getSettings().catch(() => null);
-        populateUI(fresh || UI_DEFAULTS);
-      });
-    }
+.settings-row select {
+  margin-left: auto;
+  min-width: 120px;
+}
 
-    // Live Listeners for smoother UX
-    if (EL.message_threshold) {
-        EL.message_threshold.addEventListener('change', async () => {
-            await api.setSettings({ message_threshold: parseInt(EL.message_threshold.value) });
-        });
-    }
+.button-row {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-start;
+}
 
-    if (EL.refresh_memory) {
-      EL.refresh_memory.addEventListener('click', () => {
-        if (typeof api.refreshMemory === 'function') api.refreshMemory();
-      });
-    }
-  }
+.btn-primary,
+.btn-danger {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: all 0.2s ease;
+}
 
-  // Poll for API
-  let attempts = 0;
-  const poll = setInterval(() => {
-    attempts++;
-    if (window.qvink_memory && typeof window.qvink_memory.getSettings === 'function') {
-      clearInterval(poll);
-      wireToAPI(window.qvink_memory);
-      return;
-    }
-    if (attempts >= 50) {
-      clearInterval(poll);
-      populateUI(); // Fallback
-    }
-  }, 100);
+.btn-primary {
+  background: var(--blue, #0066cc);
+  color: white;
+}
 
-  populateUI();
-})();
-</script>
+.btn-primary:hover:not(:disabled) {
+  background: var(--blue-dark, #0052a3);
+}
+
+.btn-danger {
+  background: var(--red, #d32f2f);
+  color: white;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: var(--red-dark, #b71c1c);
+}
+
+.btn-primary:disabled,
+.btn-danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.status-display {
+  padding: 10px;
+  background: var(--quote, #e3f2fd);
+  border-left: 4px solid var(--blue, #0066cc);
+  border-radius: 4px;
+  margin: 10px 0;
+  font-size: 14px;
+}
+
+.stats-display {
+  padding: 10px;
+  background: var(--SmartThemeBlurTintColor, white);
+  border-radius: 4px;
+  margin: 10px 0;
+  font-size: 13px;
+}
+
+.stat-item {
+  padding: 5px 0;
+}
+
+.stat-item strong {
+  margin-right: 8px;
+}
+
+hr {
+  border: none;
+  border-top: 1px solid var(--bg3, #ddd);
+  margin: 15px 0;
+}
+</style>
