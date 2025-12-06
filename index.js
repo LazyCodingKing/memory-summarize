@@ -239,4 +239,4 @@ export async function setup() {
 }
 
 // Module exports
-export { setup };
+
