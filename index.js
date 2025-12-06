@@ -3,16 +3,20 @@ import { saveSettingsDebounced, generateRaw, amount_gen } from '../../../../scri
 
 const MODULE = 'memory-summarize';
 
-const DEFAULT_PROMPT = `Summarize the following story progress.
-Include key events and details.
-Merge the new conversation into the existing memory.
-Keep it concise.
+const DEFAULT_PROMPT = `[System Note: You are an AI managing the long-term memory of a story.]
+Your job is to update the existing summary with new events.
 
 EXISTING MEMORY:
 "{{EXISTING}}"
 
 RECENT CONVERSATION:
 {{NEW_LINES}}
+
+INSTRUCTION:
+Write a consolidated summary in the past tense. 
+Merge the new conversation into the existing memory.
+Keep it concise. Do not lose key details (names, locations, major plot points).
+Do not output anything else, just the summary text.
 
 UPDATED MEMORY:`;
 
@@ -114,14 +118,11 @@ function refreshMemoryInjection() {
 }
 
 // --- Pruning Logic (Interceptor Method) ---
-// This function MUST be global, matching the manifest.json "generate_interceptor"
 globalThis.titan_intercept_messages = function (chat, contextSize) {
     if (!settings.enabled || !settings.pruning_enabled) return;
 
     const meta = getMeta();
     const lastIndex = meta.last_index || 0;
-    
-    // Safety buffer: keep the last few messages visible even if summarized
     const buffer = 4;
     const pruneLimit = lastIndex - buffer;
 
@@ -129,18 +130,15 @@ globalThis.titan_intercept_messages = function (chat, contextSize) {
         const ctx = getContext();
         const IGNORE = ctx.symbols.ignore; 
 
-        // Iterate the chat array passed by the interceptor
         for (let i = 0; i < chat.length; i++) {
-            // If this message index is older than our limit
             if (i < pruneLimit) {
-                // Set the ignore symbol
                 if (!chat[i][IGNORE]) chat[i][IGNORE] = true;
             }
         }
     }
 };
 
-// --- Summarizer (Native Method) ---
+// --- Summarizer ---
 async function runSummarization() {
     if (isProcessing) return;
     const ctx = getContext();
@@ -166,11 +164,11 @@ async function runSummarization() {
         promptText = promptText.replace('{{EXISTING}}', existingMemory);
         promptText = promptText.replace('{{NEW_LINES}}', newLines);
 
-        // --- THE FIX: Use Native String Prompt ---
-        // We pass a simple string. ST handles the conversion to Chat/Text format.
-        // We use 'amount_gen' (the user's slider setting) for length.
+        // Native Generation (Qvink Method)
         const result = await generateRaw(promptText, {
-            max_length: amount_gen, 
+            max_length: amount_gen, // Use user's slider setting
+            stop: ["INSTRUCTION:", "RECENT CONVERSATION:", "UPDATED MEMORY:"],
+            temperature: 0.5,
             skip_w_info: true,
             include_jailbreak: false
         });
@@ -275,21 +273,33 @@ async function init() {
 
     const ctx = getContext();
     
-    // Main Hooks
-    ctx.eventSource.on('chat:new-message', onNewMessage);
+    // --- QVINK EVENT LISTENERS (THE FIX) ---
+    // We listen to specific render events instead of the generic chat:new-message
+    // which seems to be failing on your version.
     
-    // Ensure visuals stick when ST redraws chat
-    ctx.eventSource.on('chat_message_rendered', () => {
-        setTimeout(renderVisuals, 50);
-    });
+    const event_types = ctx.event_types;
     
-    ctx.eventSource.on('chat_loaded', () => { 
-        updateUI(); 
-        refreshMemoryInjection(); 
-        setTimeout(renderVisuals, 500); 
+    // Trigger on User Message
+    ctx.eventSource.on(event_types.USER_MESSAGE_RENDERED, () => {
+        log("User message detected");
+        onNewMessage();
     });
 
-    log('Titan Memory v7 (Native) Loaded.');
+    // Trigger on Character Message
+    ctx.eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, () => {
+        log("Character message detected");
+        onNewMessage();
+    });
+
+    // Trigger on Chat Change
+    ctx.eventSource.on(event_types.CHAT_CHANGED, () => {
+        log("Chat changed");
+        updateUI();
+        refreshMemoryInjection();
+        setTimeout(renderVisuals, 500);
+    });
+
+    log('Titan Memory v8 (Qvink Events) Loaded.');
 }
 
 init();
