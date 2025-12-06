@@ -1,5 +1,5 @@
 import { getContext, extension_settings, saveMetadataDebounced } from '../../../extensions.js';
-import { saveSettingsDebounced, generateRaw, amount_gen } from '../../../../script.js';
+import { saveSettingsDebounced, generateRaw, amount_gen, main_api } from '../../../../script.js';
 
 const MODULE = 'memory-summarize';
 
@@ -35,13 +35,11 @@ let isProcessing = false;
 // --- Helpers ---
 const log = (msg) => console.log(`[Titan] ${msg}`);
 const err = (msg) => console.error(`[Titan] ${msg}`);
-
 const getMeta = () => {
     const ctx = getContext();
     if (!ctx.character) return {};
     return ctx.character.metadata[MODULE] || {};
 };
-
 const setMeta = (data) => {
     const ctx = getContext();
     if (!ctx.character) return;
@@ -66,25 +64,18 @@ function updateUI() {
     }
 }
 
-// --- Visual Injection (Qvink Method: By Message ID) ---
+// --- Visual Injection ---
 function renderVisuals(errorMsg = null) {
     if (!settings.enabled || !settings.show_visuals) {
         $('.titan-chat-node').remove();
         return;
     }
 
-    const ctx = getContext();
     const meta = getMeta();
-    
-    // Find the last message ID
-    const lastMsgId = ctx.chat.length - 1;
-    if (lastMsgId < 0) return;
-
-    // Find the DOM element with that mesid
-    const lastMsg = $(`#chat [mesid="${lastMsgId}"]`);
+    const chat = $('#chat');
+    const lastMsg = chat.children('.mes').last();
     if (lastMsg.length === 0) return;
 
-    // Remove old nodes
     $('.titan-chat-node').remove();
 
     let html = '';
@@ -101,7 +92,6 @@ function renderVisuals(errorMsg = null) {
             <div class="titan-memory-content" style="white-space: pre-wrap;">${meta.summary}</div></div>`;
     }
 
-    // Inject AFTER the text block (Qvink style)
     if (html) {
         const textBlock = lastMsg.find('.mes_text');
         if (textBlock.length) {
@@ -112,7 +102,7 @@ function renderVisuals(errorMsg = null) {
     }
 }
 
-// --- Injection Logic (Qvink Method) ---
+// --- Injection Logic ---
 function refreshMemoryInjection() {
     const ctx = getContext();
     const meta = getMeta();
@@ -123,7 +113,6 @@ function refreshMemoryInjection() {
     }
 
     const injectionText = `[System Note - Story Memory]:\n${meta.summary}`;
-    // extensionName, text, position, depth, scan, role
     ctx.setExtensionPrompt(`${MODULE}_injection`, injectionText, 0, 0, true, 0);
 }
 
@@ -148,7 +137,7 @@ globalThis.titan_intercept_messages = function (chat, contextSize) {
     }
 };
 
-// --- Summarizer (Fixed API Call) ---
+// --- Summarizer ---
 async function runSummarization() {
     if (isProcessing) return;
     const ctx = getContext();
@@ -172,16 +161,19 @@ async function runSummarization() {
         promptText = promptText.replace('{{EXISTING}}', existingMemory);
         promptText = promptText.replace('{{NEW_LINES}}', newLines);
 
-        // Construct Chat Array for compatibility
-        const messages = [
-            { role: 'system', content: 'You are a helpful assistant.' },
-            { role: 'user', content: promptText }
-        ];
+        // --- THE FINAL FIX: Smart API Formatting ---
+        let apiPrompt;
+        // Check if the main API is a Chat Completion type
+        if (main_api === 'openai' || main_api === 'claude') {
+            log("API is Chat Completion type. Formatting as message array.");
+            apiPrompt = [{ role: 'user', content: promptText }];
+        } else {
+            log("API is Text Completion type. Formatting as raw string.");
+            apiPrompt = promptText;
+        }
 
-        // --- THE FIX: Pass a SINGLE OBJECT to generateRaw ---
-        // This matches Qvink's implementation exactly.
         const result = await generateRaw({
-            prompt: messages, 
+            prompt: apiPrompt,
             max_length: 600,
             stop: ["INSTRUCTION:", "RECENT CONVERSATION:", "UPDATED MEMORY:"],
             temperature: 0.5,
@@ -223,7 +215,6 @@ function onNewMessage() {
     const diff = currentCount - lastIndex;
     
     if (diff >= settings.threshold) {
-        log(`Threshold reached (${diff}). Summarizing.`);
         runSummarization();
     } else {
         refreshMemoryInjection();
@@ -280,7 +271,7 @@ function saveSettings() {
 
 // --- MAIN ENTRY POINT ---
 jQuery(async function () {
-    log('Initializing Titan Memory v12...');
+    log('Initializing Titan Memory v13...');
 
     settings = { ...defaults, ...(extension_settings[MODULE] || {}) };
 
@@ -297,19 +288,11 @@ jQuery(async function () {
     const ctx = getContext();
     const event_types = ctx.event_types;
 
-    // Listeners using System Types (Qvink Style)
-    ctx.eventSource.on(event_types.USER_MESSAGE_RENDERED, () => {
-        log("User message rendered");
-        onNewMessage();
-    });
-
-    ctx.eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, () => {
-        log("Character message rendered");
-        onNewMessage();
-    });
+    // Listeners
+    ctx.eventSource.on(event_types.USER_MESSAGE_RENDERED, onNewMessage);
+    ctx.eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, onNewMessage);
 
     ctx.eventSource.on(event_types.CHAT_CHANGED, () => {
-        log("Chat changed");
         updateUI();
         refreshMemoryInjection();
         setTimeout(renderVisuals, 500);
@@ -322,5 +305,5 @@ jQuery(async function () {
         setTimeout(renderVisuals, 1000);
     }
 
-    log('Titan Memory v12 (Qvink API Match) Loaded.');
+    log('Titan Memory v13 (Final Fix) Loaded.');
 });
