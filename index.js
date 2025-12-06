@@ -529,11 +529,17 @@ function setup_ui() {
 
 async function load_settings_html() {
     try {
-        const response = await fetch('/scripts/extensions/third-party/titan-memory/settings.html');
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        // Get the extension directory dynamically
+        const extensionDir = new URL(import.meta.url).pathname;
+        const extensionPath = extensionDir.substring(0, extensionDir.lastIndexOf('/'));
+        const settingsPath = `${extensionPath}/settings.html`;
+        
+        const response = await fetch(settingsPath);
+        if (!response.ok) throw new Error(`HTTP ${response.status} - Could not load ${settingsPath}`);
         const html = await response.text();
         $('#extensions_settings2').append(html);
         setup_ui();
+        log('Settings UI loaded successfully');
     } catch (e) {
         error(`Failed to load settings.html: ${e.message}`);
     }
