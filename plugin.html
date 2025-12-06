@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Memory Summarize - SillyTavern Plugin</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Plugin Container -->
+    <div id="memory-summarize-plugin" class="memory-summarize-panel">
+        <h3>🧠 Memory Summarize</h3>
+
+        <!-- Settings Section -->
+        <div class="memory-settings">
+            <!-- Enable Plugin Checkbox -->
+            <label>
+                <input type="checkbox" id="ms-enabled" checked>
+                <span>Enable Plugin</span>
+            </label>
+
+            <!-- Auto-Summarize Checkbox -->
+            <label>
+                <input type="checkbox" id="ms-auto" checked>
+                <span>Auto-Summarize</span>
+            </label>
+
+            <!-- Summary Length Selection -->
+            <label>
+                <span>Summary Length:</span>
+                <select id="ms-length">
+                    <option value="short">Short</option>
+                    <option value="medium" selected>Medium</option>
+                    <option value="long">Long</option>
+                </select>
+            </label>
+
+            <!-- Max History Lines -->
+            <label>
+                <span>Max History Lines:</span>
+                <input 
+                    type="number" 
+                    id="ms-max-lines" 
+                    min="10" 
+                    max="500" 
+                    value="50"
+                    class="form-input"
+                >
+            </label>
+
+            <!-- Update Interval -->
+            <label>
+                <span>Update Interval (minutes):</span>
+                <input 
+                    type="number" 
+                    id="ms-interval" 
+                    min="1" 
+                    max="60" 
+                    value="5"
+                    class="form-input"
+                >
+            </label>
+
+            <!-- Action Buttons -->
+            <div class="button-group">
+                <button id="ms-summarize-now" class="btn btn-primary">
+                    📝 Summarize Now
+                </button>
+                <button id="ms-reset" class="btn btn-danger">
+                    🔄 Reset Memory
+                </button>
+            </div>
+
+            <!-- Status Display -->
+            <div id="ms-status" class="status-box">
+                Status: <span class="status-text">Ready</span>
+            </div>
+        </div>
+
+        <!-- Statistics Section -->
+        <div id="ms-stats-section" class="memory-stats" style="display: none;">
+            <div class="stat-card">
+                <div class="stat-card-label">Buffer Size</div>
+                <div class="stat-card-value" id="ms-stat-buffer">0</div>
+                <div class="stat-card-unit">messages</div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-card-label">Last Summary</div>
+                <div class="stat-card-value" id="ms-stat-time">Never</div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-card-label">Plugin Status</div>
+                <div class="stat-card-value" id="ms-stat-status">Ready</div>
+            </div>
+        </div>
+
+        <!-- Memory Progress Bar -->
+        <div id="ms-progress-section" class="memory-progress" style="display: none;">
+            <div class="progress-label">
+                <span class="progress-label-text">Memory Buffer</span>
+                <span class="progress-label-value">
+                    <span id="ms-progress-current">0</span>/<span id="ms-progress-max">50</span>
+                </span>
+            </div>
+            <div class="progress-bar">
+                <div class="progress-fill" id="ms-progress-fill" style="width: 0%;"></div>
+            </div>
+        </div>
+
+        <!-- Summary Display Area -->
+        <div id="ms-summary-container" style="display: none;">
+            <div class="memory-summary">
+                <h3>Generated Summary</h3>
+                <p id="ms-summary-text"></p>
+                <small id="ms-summary-time"></small>
+            </div>
+        </div>
+
+        <!-- API Configuration Section (Collapsible) -->
+        <details id="ms-api-section" style="margin-top: 20px;">
+            <summary style="cursor: pointer; font-weight: 600; padding: 10px 0;">
+                ⚙️ API Configuration (Advanced)
+            </summary>
+
+            <div style="padding: 15px; border-top: 1px solid #ddd; margin-top: 10px;">
+                <label>
+                    <span>API Endpoint:</span>
+                    <input 
+                        type="text" 
+                        id="ms-api-endpoint" 
+                        placeholder="https://api.example.com"
+                        class="form-input"
+                        style="width: 100%; padding: 8px; margin: 8px 0;"
+                    >
+                </label>
+
+                <label>
+                    <span>API Key:</span>
+                    <input 
+                        type="password" 
+                        id="ms-api-key" 
+                        placeholder="Your API key"
+                        class="form-input"
+                        style="width: 100%; padding: 8px; margin: 8px 0;"
+                    >
+                </label>
+
+                <button id="ms-test-api" class="btn btn-secondary" style="margin-top: 10px;">
+                    🔗 Test Connection
+                </button>
+                <div id="ms-api-status" style="margin-top: 10px; font-size: 12px;"></div>
+            </div>
+        </details>
+
+        <!-- Help Section -->
+        <details id="ms-help-section" style="margin-top: 20px;">
+            <summary style="cursor: pointer; font-weight: 600; padding: 10px 0;">
+                ❓ Help & Documentation
+            </summary>
+
+            <div style="padding: 15px; border-top: 1px solid #ddd; margin-top: 10px; font-size: 13px; line-height: 1.6;">
+                <h4>📖 Quick Guide</h4>
+                <ul style="margin: 10px 0;">
+                    <li><strong>Enable Plugin:</strong> Check the "Enable Plugin" box</li>
+                    <li><strong>Auto-Summarize:</strong> Turn on to summarize automatically</li>
+                    <li><strong>Summary Length:</strong> Choose short/medium/long summaries</li>
+                    <li><strong>Summarize Now:</strong> Click to manually trigger summarization</li>
+                    <li><strong>Reset Memory:</strong> Clear the memory buffer</li>
+                </ul>
+
+                <h4>⚡ Tips</h4>
+                <ul style="margin: 10px 0;">
+                    <li>Default updates every 5 minutes with 50+ messages</li>
+                    <li>Adjust settings to fit your conversation style</li>
+                    <li>Check console (F12) for detailed logging</li>
+                    <li>API integration is optional for advanced use</li>
+                </ul>
+
+                <h4>🔗 Resources</h4>
+                <ul style="margin: 10px 0;">
+                    <li><a href="https://github.com/LazyCodingKing/memory-summarize" target="_blank">GitHub Repository</a></li>
+                    <li><a href="#" id="ms-open-docs">View Full Documentation</a></li>
+                    <li><a href="#" id="ms-open-examples">View Code Examples</a></li>
+                </ul>
+            </div>
+        </details>
+    </div>
+
+    <!-- Script: Load and Initialize Plugin -->
+    <script type="module">
+        import MemorySummarizePlugin from './src/index.js';
+
+        // Wait for SillyTavern API to be available
+        async function initPluginUI() {
+            try {
+                // Initialize plugin with SillyTavern API
+                const success = await MemorySummarizePlugin.init(window.SillyTavernAPI || {});
+                
+                if (!success) {
+                    console.warn('[MemorySummarize] Plugin initialization returned false');
+                    updateStatus('Initialization warning', 'warning');
+                }
+
+                // Setup UI event listeners
+                setupUIEventListeners();
+                
+                // Start monitoring
+                startMonitoring();
+
+                console.log('[MemorySummarize] Plugin UI initialized');
+            } catch (error) {
+                console.error('[MemorySummarize] UI initialization error:', error);
+                updateStatus('Initialization error', 'error');
+            }
+        }
+
+        /**
+         * Setup all UI event listeners
+         */
+        function setupUIEventListeners() {
+            // Enable/Disable plugin
+            const enableCheckbox = document.getElementById('ms-enabled');
+            if (enableCheckbox) {
+                enableCheckbox.addEventListener('change', (e) => {
+                    MemorySummarizePlugin.config.enabled = e.target.checked;
+                    MemorySummarizePlugin.saveConfig();
+                    updateStatus(e.target.checked ? 'Plugin enabled' : 'Plugin disabled', 'success');
+                });
+            }
+
+            // Auto-summarize toggle
+            const autoCheckbox = document.getElementById('ms-auto');
+            if (autoCheckbox) {
+                autoCheckbox.addEventListener('change', (e) => {
+                    MemorySummarizePlugin.config.autoSummarize = e.target.checked;
+                    MemorySummarizePlugin.saveConfig();
+                    updateStatus(e.target.checked ? 'Auto-summarize enabled' : 'Auto-summarize disabled', 'success');
+                });
+            }
+
+            // Summary length selection
+            const lengthSelect = document.getElementById('ms-length');
+            if (lengthSelect) {
+                lengthSelect.addEventListener('change', (e) => {
+                    MemorySummarizePlugin.config.summaryLength = e.target.value;
+                    MemorySummarizePlugin.saveConfig();
+                    updateStatus('Summary length updated', 'success');
+                });
+            }
+
+            // Max history lines
+            const maxLinesInput = document.getElementById('ms-max-lines');
+            if (maxLinesInput) {
+                maxLinesInput.addEventListener('change', (e) => {
+                    const value = Math.max(10, Math.min(500, parseInt(e.target.value) || 50));
+                    MemorySummarizePlugin.config.maxHistoryLines = value;
+                    maxLinesInput.value = value;
+                    MemorySummarizePlugin.saveConfig();
+                    updateStatus('Max history updated', 'success');
+                });
+            }
+
+            // Update interval
+            const intervalInput = document.getElementById('ms-interval');
+            if (intervalInput) {
+                intervalInput.addEventListener('change', (e) => {
+                    const minutes = Math.max(1, Math.min(60, parseInt(e.target.value) || 5));
+                    MemorySummarizePlugin.config.updateInterval = minutes * 60000;
+                    intervalInput.value = minutes;
+                    MemorySummarizePlugin.saveConfig();
+                    updateStatus('Update interval changed', 'success');
+                });
+            }
+
+            // Summarize Now button
+            const summarizeBtn = document.getElementById('ms-summarize-now');
+            if (summarizeBtn) {
+                summarizeBtn.addEventListener('click', async () => {
+                    summarizeBtn.disabled = true;
+                    updateStatus('Summarizing...', 'info');
+
+                    try {
+                        const summary = await MemorySummarizePlugin.summarizeMemory();
+                        if (summary) {
+                            displaySummary(summary);
+                            updateStatus('Summarization complete', 'success');
+                        } else {
+                            updateStatus('No content to summarize', 'warning');
+                        }
+                    } catch (error) {
+                        console.error('Summarization error:', error);
+                        updateStatus('Summarization error', 'error');
+                    } finally {
+                        summarizeBtn.disabled = false;
+                    }
+                });
+            }
+
+            // Reset Memory button
+            const resetBtn = document.getElementById('ms-reset');
+            if (resetBtn) {
+                resetBtn.addEventListener('click', () => {
+                    if (confirm('Are you sure you want to reset memory buffer?')) {
+                        MemorySummarizePlugin.memoryBuffer = [];
+                        updateStatus('Memory buffer reset', 'success');
+                        updateStats();
+                    }
+                });
+            }
+
+            // Test API button
+            const testApiBtn = document.getElementById('ms-test-api');
+            if (testApiBtn) {
+                testApiBtn.addEventListener('click', async () => {
+                    testApiBtn.disabled = true;
+                    const apiStatus = document.getElementById('ms-api-status');
+                    apiStatus.textContent = 'Testing...';
+
+                    try {
+                        const endpoint = document.getElementById('ms-api-endpoint').value;
+                        const key = document.getElementById('ms-api-key').value;
+
+                        if (!endpoint) {
+                            apiStatus.textContent = '❌ Please enter API endpoint';
+                            return;
+                        }
+
+                        MemorySummarizePlugin.config.apiEndpoint = endpoint;
+                        MemorySummarizePlugin.config.apiKey = key || null;
+
+                        const connected = await MemorySummarizePlugin.api.testConnection();
+
+                        if (connected) {
+                            apiStatus.textContent = '✅ Connection successful!';
+                            apiStatus.style.color = 'green';
+                            MemorySummarizePlugin.saveConfig();
+                        } else {
+                            apiStatus.textContent = '❌ Connection failed. Check endpoint and key.';
+                            apiStatus.style.color = 'red';
+                        }
+                    } catch (error) {
+                        apiStatus.textContent = '❌ Error: ' + error.message;
+                        apiStatus.style.color = 'red';
+                    } finally {
+                        testApiBtn.disabled = false;
+                    }
+                });
+            }
+
+            // Documentation links
+            const docsLink = document.getElementById('ms-open-docs');
+            if (docsLink) {
+                docsLink.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    console.log('Open documentation');
+                    // In real implementation, open README.md
+                });
+            }
+
+            const examplesLink = document.getElementById('ms-open-examples');
+            if (examplesLink) {
+                examplesLink.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    console.log('Open examples');
+                    // In real implementation, open examples.js
+                });
+            }
+        }
+
+        /**
+         * Update status message
+         */
+        function updateStatus(message, type = 'info') {
+            const statusDiv = document.getElementById('ms-status');
+            if (statusDiv) {
+                const statusText = statusDiv.querySelector('.status-text');
+                if (statusText) {
+                    statusText.textContent = message;
+                    statusDiv.className = `status-box status-${type}`;
+                }
+            }
+        }
+
+        /**
+         * Display summary result
+         */
+        function displaySummary(summary) {
+            const container = document.getElementById('ms-summary-container');
+            const text = document.getElementById('ms-summary-text');
+            const time = document.getElementById('ms-summary-time');
+
+            if (text && time) {
+                text.textContent = summary;
+                time.textContent = 'Generated: ' + new Date().toLocaleString();
+                container.style.display = 'block';
+            }
+        }
+
+        /**
+         * Update statistics display
+         */
+        function updateStats() {
+            const stats = MemorySummarizePlugin.getStats();
+
+            // Update stat cards
+            const bufferStat = document.getElementById('ms-stat-buffer');
+            if (bufferStat) bufferStat.textContent = stats.bufferSize;
+
+            const timeStat = document.getElementById('ms-stat-time');
+            if (timeStat) {
+                timeStat.textContent = stats.lastSummaryTime > 0 
+                    ? new Date(stats.lastSummaryTime).toLocaleTimeString()
+                    : 'Never';
+            }
+
+            const statusStat = document.getElementById('ms-stat-status');
+            if (statusStat) statusStat.textContent = stats.isInitialized ? 'Ready' : 'Initializing';
+
+            // Update progress bar
+            const progressCurrent = document.getElementById('ms-progress-current');
+            const progressMax = document.getElementById('ms-progress-max');
+            const progressFill = document.getElementById('ms-progress-fill');
+
+            if (progressCurrent && progressMax && progressFill) {
+                progressCurrent.textContent = stats.bufferSize;
+                progressMax.textContent = stats.config.maxHistoryLines;
+                const percentage = (stats.bufferSize / stats.config.maxHistoryLines) * 100;
+                progressFill.style.width = Math.min(percentage, 100) + '%';
+            }
+        }
+
+        /**
+         * Start monitoring updates
+         */
+        function startMonitoring() {
+            // Update stats every 5 seconds
+            setInterval(() => {
+                updateStats();
+            }, 5000);
+
+            // Initial stats update
+            updateStats();
+
+            // Load and display config
+            const config = MemorySummarizePlugin.config;
+            if (config) {
+                document.getElementById('ms-enabled').checked = config.enabled;
+                document.getElementById('ms-auto').checked = config.autoSummarize;
+                document.getElementById('ms-length').value = config.summaryLength;
+                document.getElementById('ms-max-lines').value = config.maxHistoryLines;
+                document.getElementById('ms-interval').value = config.updateInterval / 60000;
+            }
+        }
+
+        // Initialize when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initPluginUI);
+        } else {
+            initPluginUI();
+        }
+
+        // Expose plugin to global scope for console debugging
+        window.MemorySummarizePlugin = MemorySummarizePlugin;
+    </script>
+</body>
+</html>
