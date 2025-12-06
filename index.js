@@ -206,12 +206,34 @@ function updateUI() {
     const currentCount = ctx.chat?.length || 0;
     const pending = Math.max(0, currentCount - lastIndex);
 
+    // Calculate token savings
+    let totalTokens = 0;
+    let savedTokens = 0;
+    
+    if (ctx.chat && ctx.chat.length > 0) {
+        for (let msg of ctx.chat) {
+            const tokens = count_tokens(msg.mes);
+            totalTokens += tokens;
+        }
+        
+        // Calculate how many tokens would be saved by pruning
+        const buffer = get_settings('buffer_size');
+        const pruneLimit = Math.max(0, lastIndex - buffer);
+        for (let i = 0; i < Math.min(pruneLimit, ctx.chat.length); i++) {
+            savedTokens += count_tokens(ctx.chat[i].mes);
+        }
+    }
+
     const $status = $('#titan-status');
     if ($status.length) {
         if (isProcessing) {
-            $status.text(`Status: Processing...`);
+            $status.html(`<i class="fa-solid fa-spinner fa-spin"></i><span>Processing...</span>`);
         } else {
-            $status.text(`Status: Ready. ${pending} new messages pending.`);
+            let statusText = `Ready. ${pending} pending`;
+            if (savedTokens > 0 && get_settings('pruning_enabled')) {
+                statusText += ` | Saving ~${savedTokens} tokens`;
+            }
+            $status.html(`<i class="fa-solid fa-circle-check"></i><span>${statusText}</span>`);
         }
     }
 }
@@ -291,7 +313,10 @@ function refresh_memory_injection() {
 
 // --- Pruning ---
 function handle_pruning() {
-    if (!is_chat_enabled() || !get_settings('pruning_enabled')) return;
+    if (!is_chat_enabled() || !get_settings('pruning_enabled')) {
+        debug('Pruning disabled');
+        return;
+    }
 
     const ctx = getContext();
     const memory = get_chat_memory();
@@ -304,11 +329,21 @@ function handle_pruning() {
     const pruneLimit = Math.max(0, lastIndex - buffer);
 
     if (pruneLimit > 0) {
-        debug(`Pruning messages up to index ${pruneLimit}`);
+        debug(`Pruning messages: indices 0-${pruneLimit} will be hidden`);
+        
+        // Mark old messages to be excluded from context
         for (let i = 0; i < Math.min(pruneLimit, chat.length); i++) {
             if (!chat[i].extra) chat[i].extra = {};
             chat[i].extra.exclude_from_context = true;
         }
+        
+        // Calculate token savings
+        let pruned_tokens = 0;
+        for (let i = 0; i < Math.min(pruneLimit, chat.length); i++) {
+            pruned_tokens += count_tokens(chat[i].mes);
+        }
+        
+        debug(`Pruned ${pruneLimit} messages, saving ~${pruned_tokens} tokens`);
     }
 }
 
@@ -627,5 +662,50 @@ jQuery(async function () {
         });
     }
 
+    // Register message interceptor for token savings (like Qvink)
+    if (globalThis.getContext) {
+        log('Registering message interceptor for token optimization...');
+    }
+
     log(`Extension loaded successfully`);
 });
+
+// Message interceptor - removes pruned messages from context before sending to API
+globalThis.titan_memory_intercept = function (chat, _contextSize, _abort, type) {
+    if (!is_chat_enabled() || !get_settings('pruning_enabled')) {
+        return; // Don't intercept if pruning disabled
+    }
+
+    debug('Intercepting messages for pruning...');
+    
+    const memory = get_chat_memory();
+    const lastIndex = memory.last_index || 0;
+    const buffer = get_settings('buffer_size');
+    const pruneLimit = Math.max(0, lastIndex - buffer);
+
+    if (pruneLimit <= 0) return;
+
+    // Skip the most recent message if it's a continue
+    let start = chat.length - 1;
+    if (type === 'continue') start--;
+
+    let pruned_count = 0;
+    let pruned_tokens = 0;
+
+    // Mark messages for exclusion
+    for (let i = 0; i < Math.min(pruneLimit, chat.length); i++) {
+        if (!chat[i].extra) chat[i].extra = {};
+        
+        // Use ST's ignore symbol to exclude from context
+        const IGNORE_SYMBOL = getContext().symbols?.ignore;
+        if (IGNORE_SYMBOL) {
+            chat[i].extra[IGNORE_SYMBOL] = true;
+            pruned_count++;
+            pruned_tokens += count_tokens(chat[i].mes);
+        }
+    }
+
+    if (pruned_count > 0) {
+        debug(`Message interceptor: Pruned ${pruned_count} messages (~${pruned_tokens} tokens)`);
+    }
+};
