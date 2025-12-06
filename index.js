@@ -9,15 +9,15 @@ const default_settings = {
   summary_length: 'medium',
   max_history: 50,
   update_interval: 5,
-  api_endpoint: 'http://127.0.0.1:5000/api/v1/generate', // Default for textgen-webui
+  api_endpoint: 'http://127.0.0.1:5000/api/v1/generate',
   api_key: '',
   debug: false,
 };
 
 let settings = {};
 let memory_buffer = [];
-let last_summary_time = 0;
 
+// --- Logging ---
 function log(message) {
   console.log(`[${MODULE_NAME}]`, message);
 }
@@ -32,14 +32,21 @@ function error(message) {
   console.error(`[${MODULE_NAME}]`, message);
 }
 
+// --- UI Update Functions ---
 function update_status(message, isError = false) {
   const statusEl = $('#ms-status-text');
   statusEl.text(message);
-  statusEl.parent().toggleClass('error', isError);
+  statusEl.closest('.status-display').removeClass('error success warning').addClass(isError ? 'error' : '');
 }
 
 function update_display() {
   const context = getContext();
+  // Gracefully handle cases where no character is loaded
+  if (!context || !context.character) {
+    debug("update_display called but no character is loaded. Skipping.");
+    return;
+  }
+  
   const metadata = context.character.metadata?.[MODULE_NAME] || {};
   
   $('#ms-buffer-count').text(`${memory_buffer.length} messages`);
@@ -52,6 +59,7 @@ function update_display() {
   }
 }
 
+// --- Core Logic ---
 function save_settings() {
   extension_settings[MODULE_NAME] = settings;
   saveSettingsDebounced();
@@ -126,6 +134,7 @@ async function summarize_memory() {
   }
 }
 
+// --- Event Handlers ---
 function onNewMessage(data) {
   if (!settings.enabled) return;
 
@@ -154,7 +163,7 @@ function onNewMessage(data) {
 function add_summary_to_context(context, text) {
     if (!settings.enabled) return text;
 
-    const metadata = context.character.metadata?.[MODULE_NAME] || {};
+    const metadata = context.character?.metadata?.[MODULE_NAME] || {};
     const summary = metadata.summary;
 
     if (summary) {
@@ -165,10 +174,10 @@ function add_summary_to_context(context, text) {
     return text;
 }
 
+// --- Setup ---
 function setup_settings_ui() {
   const panel = $('#memory-summarize-settings');
 
-  // Bind events to elements within the panel
   panel.on('change', '#ms-enabled', function() { settings.enabled = this.checked; save_settings(); });
   panel.on('change', '#ms-auto-summarize', function() { settings.auto_summarize = this.checked; save_settings(); });
   panel.on('change', '#ms-length', function() { settings.summary_length = $(this).val(); save_settings(); });
@@ -200,7 +209,7 @@ function setup_settings_ui() {
   panel.find('#ms-api-key').val(settings.api_key);
   panel.find('#ms-debug').prop('checked', settings.debug);
   
-  update_display();
+  // DEFERRED: We now call update_display() when a chat is loaded, not here.
   update_status('Ready');
 }
 
@@ -211,7 +220,6 @@ async function setup() {
 
     const context = getContext();
     
-    // Load the HTML UI
     const url = new URL(import.meta.url);
     const settings_path = `${url.pathname.substring(0, url.pathname.lastIndexOf('/'))}/settings.html`;
     const response = await fetch(settings_path);
@@ -220,12 +228,15 @@ async function setup() {
     const html = await response.text();
     $('#extensions_settings2').append(html);
     
+    // This part is safe and does not depend on a character being loaded.
     setup_settings_ui();
 
-    // Register the modern event listener for new messages
+    // Register event listeners
     context.eventSource.on('chat:new-message', onNewMessage);
     
-    // Register the context modifier to inject the summary
+    // *** THE FIX: Add an event listener to update the UI only when a character is loaded ***
+    context.eventSource.on('chat_loaded', update_display);
+
     context.registerContextModifier(add_summary_to_context);
 
     log('Extension setup complete.');
