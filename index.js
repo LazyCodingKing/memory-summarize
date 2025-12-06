@@ -1,28 +1,30 @@
 import { getContext, extension_settings, saveMetadataDebounced } from '../../../extensions.js';
 import { saveSettingsDebounced } from '../../../../script.js';
 
-const MODULE_NAME = 'memory_summarize';
+const MODULE_NAME = 'memory-summarize';
 
-// Settings structure
 const default_settings = {
   enabled: true,
   auto_summarize: true,
   summary_length: 'medium',
   max_history: 50,
   update_interval: 5,
-  api_endpoint: '',
+  api_endpoint: 'http://127.0.0.1:5000/api/v1/generate', // Default for textgen-webui
   api_key: '',
+  debug: false,
 };
 
-let settings = structuredClone(default_settings);
+let settings = {};
+let memory_buffer = [];
+let last_summary_time = 0;
 
 function log(message) {
   console.log(`[${MODULE_NAME}]`, message);
 }
 
-function debug(message) {
+function debug(message, ...args) {
   if (settings.debug) {
-    log(`[DEBUG] ${message}`);
+    console.log(`[${MODULE_NAME} DEBUG]`, message, ...args);
   }
 }
 
@@ -30,213 +32,206 @@ function error(message) {
   console.error(`[${MODULE_NAME}]`, message);
 }
 
-// Initialize extension settings
-function initialize_settings() {
-  if (extension_settings[MODULE_NAME] === undefined) {
-    extension_settings[MODULE_NAME] = structuredClone(default_settings);
-  }
-  settings = extension_settings[MODULE_NAME];
-  log('Settings initialized');
-}
-
-// Save settings
-function save_settings() {
-  Object.assign(extension_settings[MODULE_NAME], settings);
-  saveSettingsDebounced();
-}
-
-// Load settings.html
-async function load_settings_html() {
-  try {
-    const url = import.meta.url;
-    const extension_dir = url.substring(0, url.lastIndexOf('/'));
-    const settings_path = `${extension_dir}/settings.html`;
-    
-    const response = await fetch(settings_path);
-    if (response.ok) {
-      const html = await response.text();
-      $('#extensions_settings2').append(html);
-      log('Settings UI loaded');
-      setup_settings_ui();
-    } else {
-      error(`Failed to load settings.html: ${response.status}`);
-    }
-  } catch (err) {
-    error(`Error loading settings: ${err.message}`);
-  }
-}
-
-// Setup settings UI bindings
-function setup_settings_ui() {
-  // Enable checkbox
-  $(document).on('change', '#ms-enabled', function() {
-    settings.enabled = this.checked;
-    save_settings();
-    update_status(settings.enabled ? 'Enabled' : 'Disabled');
-  });
-
-  // Auto-summarize checkbox
-  $(document).on('change', '#ms-auto-summarize', function() {
-    settings.auto_summarize = this.checked;
-    save_settings();
-    update_status(settings.auto_summarize ? 'Auto-summarize enabled' : 'Auto-summarize disabled');
-  });
-
-  // Summary length select
-  $(document).on('change', '#ms-length', function() {
-    settings.summary_length = $(this).val();
-    save_settings();
-    update_status('Summary length updated');
-  });
-
-  // Summarize button
-  $(document).on('click', '#ms-summarize-btn', async function() {
-    $(this).prop('disabled', true);
-    update_status('Summarizing...');
-    try {
-      const summary = await summarize_memory();
-      if (summary) {
-        update_status('Summary complete');
-        log(`Generated summary: ${summary.substring(0, 50)}...`);
-      } else {
-        update_status('No content to summarize');
-      }
-    } catch (err) {
-      error(`Summarization failed: ${err.message}`);
-      update_status('Error during summarization');
-    } finally {
-      $(this).prop('disabled', false);
-    }
-  });
-
-  // Reset button
-  $(document).on('click', '#ms-reset-btn', function() {
-    memory_buffer = [];
-    last_summary_time = 0;
-    update_status('Memory buffer reset');
-    update_display();
-  });
-
-  // Set initial values
-  $('#ms-enabled').prop('checked', settings.enabled);
-  $('#ms-auto-summarize').prop('checked', settings.auto_summarize);
-  $('#ms-length').val(settings.summary_length);
-}
-
-// Memory buffer
-let memory_buffer = [];
-let last_summary_time = 0;
-
-// Simple summarizer
-async function summarize_memory() {
-  if (memory_buffer.length === 0) {
-    return null;
-  }
-
-  const text = memory_buffer
-    .map(msg => `${msg.speaker}: ${msg.text}`)
-    .join('\n');
-
-  // Simple extractive summarization
-  const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0);
-  if (sentences.length === 0) return text;
-
-  const ratio = settings.summary_length === 'short' ? 0.3 : 
-                settings.summary_length === 'medium' ? 0.5 : 0.7;
-  const numSentences = Math.max(1, Math.ceil(sentences.length * ratio));
-
-  const summary = sentences
-    .slice(0, numSentences)
-    .map(s => s.trim())
-    .join('. ') + '.';
-
-  last_summary_time = Date.now();
-  memory_buffer = [];
-  update_display();
-
-  return summary;
-}
-
-function update_status(message) {
-  $('#ms-status-text').text(message);
+function update_status(message, isError = false) {
+  const statusEl = $('#ms-status-text');
+  statusEl.text(message);
+  statusEl.parent().toggleClass('error', isError);
 }
 
 function update_display() {
-  $('#ms-buffer-count').text(memory_buffer.length);
-  if (last_summary_time > 0) {
-    const time = new Date(last_summary_time).toLocaleTimeString();
+  const context = getContext();
+  const metadata = context.character.metadata?.[MODULE_NAME] || {};
+  
+  $('#ms-buffer-count').text(`${memory_buffer.length} messages`);
+  
+  if (metadata.last_summary_time) {
+    const time = new Date(metadata.last_summary_time).toLocaleTimeString();
     $('#ms-last-summary').text(time);
   } else {
     $('#ms-last-summary').text('Never');
   }
 }
 
-// Listen for messages
-function setup_event_listeners() {
-  if (!window.eventSource) {
-    setTimeout(setup_event_listeners, 1000);
+function save_settings() {
+  extension_settings[MODULE_NAME] = settings;
+  saveSettingsDebounced();
+}
+
+async function summarize_memory() {
+  if (memory_buffer.length === 0) {
+    log('No content in buffer to summarize.');
+    return;
+  }
+  if (!settings.api_endpoint) {
+    update_status('API Endpoint is not configured.', true);
+    error('Cannot summarize: API endpoint is missing.');
     return;
   }
 
-  // Listen for new messages
-  window.eventSource.addEventListener('message_received', (event) => {
-    if (!settings.enabled) return;
-    
-    try {
-      const message = event.detail;
-      if (!message || !message.text) return;
+  update_status('Summarizing...');
+  debug(`Summarizing ${memory_buffer.length} messages.`);
 
-      memory_buffer.push({
-        timestamp: Date.now(),
-        text: message.text,
-        speaker: message.name || 'Unknown',
-      });
+  const conversation = memory_buffer.map(msg => `${msg.speaker}: ${msg.text}`).join('\n');
+  const length_map = {
+    short: 'around 100 words',
+    medium: 'around 200 words',
+    long: 'around 300 words',
+  };
+  const prompt = `Human: Summarize the following conversation in the third person. The summary should be a concise narrative, capturing the key events, character actions, and emotional tone. The summary should be ${length_map[settings.summary_length]}.\n\nCONVERSATION:\n${conversation}\n\nAssistant: Here is a summary of the conversation:\n`;
 
-      update_display();
-
-      // Auto-summarize if conditions are met
-      if (settings.auto_summarize && memory_buffer.length >= settings.max_history) {
-        const timeSinceLastSummary = (Date.now() - last_summary_time) / 1000 / 60; // minutes
-        if (timeSinceLastSummary >= settings.update_interval || last_summary_time === 0) {
-          summarize_memory();
-          log('Auto-summarize triggered');
-        }
-      }
-    } catch (err) {
-      error(`Error processing message: ${err.message}`);
-    }
-  });
-
-  log('Event listeners registered');
-}
-
-// Hook for loading settings on extension enable
-function hook_settings() {
-  // This will be called when extension is activated
-  $('#extensions_settings2').find(`[data-id="${MODULE_NAME}"]`).each(function() {
-    load_settings_html();
-  });
-}
-
-// Main initialization
-export async function setup() {
   try {
-    log('Setting up extension...');
-    
-    initialize_settings();
-    setup_event_listeners();
-    
-    // Load settings when extension settings are shown
-    $(document).on('click', '#extensions', function() {
-      // Delayed to ensure DOM is ready
-      setTimeout(load_settings_html, 100);
+    const response = await fetch(settings.api_endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': settings.api_key ? `Bearer ${settings.api_key}` : undefined,
+      },
+      body: JSON.stringify({
+        prompt: prompt,
+        max_new_tokens: 400,
+        temperature: 0.7,
+        top_p: 0.9,
+        stop: ['Human:', 'Assistant:'],
+      }),
     });
 
-    log('Extension setup complete');
+    if (!response.ok) {
+      throw new Error(`API request failed with status ${response.status}`);
+    }
+
+    const data = await response.json();
+    const summary = data.results?.[0]?.text?.trim();
+
+    if (!summary) {
+      throw new Error('API response did not contain a valid summary.');
+    }
+
+    const context = getContext();
+    if (!context.character.metadata[MODULE_NAME]) {
+      context.character.metadata[MODULE_NAME] = {};
+    }
+    context.character.metadata[MODULE_NAME].summary = summary;
+    context.character.metadata[MODULE_NAME].last_summary_time = Date.now();
+    saveMetadataDebounced();
+
+    log('Summary generated and saved to character metadata.');
+    debug('Summary:', summary);
+    update_status('Summary complete!');
+    memory_buffer = [];
+    update_display();
+
+  } catch (err) {
+    error(`Summarization failed: ${err.message}`);
+    update_status(`Error: ${err.message}`, true);
+  }
+}
+
+function onNewMessage(data) {
+  if (!settings.enabled) return;
+
+  const message = data;
+  if (!message || !message.mes || message.is_system) return;
+
+  memory_buffer.push({
+    timestamp: Date.now(),
+    text: message.mes,
+    speaker: message.name || 'Unknown',
+  });
+  update_display();
+
+  if (settings.auto_summarize && memory_buffer.length >= settings.max_history) {
+    const metadata = getContext().character.metadata?.[MODULE_NAME] || {};
+    const lastTime = metadata.last_summary_time || 0;
+    const timeSinceLastSummary = (Date.now() - lastTime) / 1000 / 60;
+
+    if (timeSinceLastSummary >= settings.update_interval) {
+      log('Auto-summarize triggered by buffer size and interval.');
+      summarize_memory();
+    }
+  }
+}
+
+function add_summary_to_context(context, text) {
+    if (!settings.enabled) return text;
+
+    const metadata = context.character.metadata?.[MODULE_NAME] || {};
+    const summary = metadata.summary;
+
+    if (summary) {
+        debug('Injecting summary into context.');
+        const formattedSummary = `[This is a summary of the conversation so far:\n${summary}\n]`;
+        return `${formattedSummary}\n${text}`;
+    }
+    return text;
+}
+
+function setup_settings_ui() {
+  const panel = $('#memory-summarize-settings');
+
+  // Bind events to elements within the panel
+  panel.on('change', '#ms-enabled', function() { settings.enabled = this.checked; save_settings(); });
+  panel.on('change', '#ms-auto-summarize', function() { settings.auto_summarize = this.checked; save_settings(); });
+  panel.on('change', '#ms-length', function() { settings.summary_length = $(this).val(); save_settings(); });
+  panel.on('input', '#ms-max-history', function() { settings.max_history = Number($(this).val()); save_settings(); });
+  panel.on('input', '#ms-update-interval', function() { settings.update_interval = Number($(this).val()); save_settings(); });
+  panel.on('input', '#ms-api-endpoint', function() { settings.api_endpoint = $(this).val().trim(); save_settings(); });
+  panel.on('input', '#ms-api-key', function() { settings.api_key = $(this).val().trim(); save_settings(); });
+  panel.on('change', '#ms-debug', function() { settings.debug = this.checked; save_settings(); });
+
+  panel.on('click', '#ms-summarize-btn', async function() {
+    $(this).prop('disabled', true);
+    await summarize_memory();
+    $(this).prop('disabled', false);
+  });
+
+  panel.on('click', '#ms-reset-btn', function() {
+    memory_buffer = [];
+    update_status('Memory buffer has been reset.');
+    update_display();
+  });
+
+  // Set initial values from loaded settings
+  panel.find('#ms-enabled').prop('checked', settings.enabled);
+  panel.find('#ms-auto-summarize').prop('checked', settings.auto_summarize);
+  panel.find('#ms-length').val(settings.summary_length);
+  panel.find('#ms-max-history').val(settings.max_history);
+  panel.find('#ms-update-interval').val(settings.update_interval);
+  panel.find('#ms-api-endpoint').val(settings.api_endpoint);
+  panel.find('#ms-api-key').val(settings.api_key);
+  panel.find('#ms-debug').prop('checked', settings.debug);
+  
+  update_display();
+  update_status('Ready');
+}
+
+async function setup() {
+  try {
+    const loaded_settings = extension_settings[MODULE_NAME] || {};
+    settings = { ...default_settings, ...loaded_settings };
+
+    const context = getContext();
+    
+    // Load the HTML UI
+    const url = new URL(import.meta.url);
+    const settings_path = `${url.pathname.substring(0, url.pathname.lastIndexOf('/'))}/settings.html`;
+    const response = await fetch(settings_path);
+    if (!response.ok) return error(`Failed to load settings.html: ${response.status}`);
+    
+    const html = await response.text();
+    $('#extensions_settings2').append(html);
+    
+    setup_settings_ui();
+
+    // Register the modern event listener for new messages
+    context.eventSource.on('chat:new-message', onNewMessage);
+    
+    // Register the context modifier to inject the summary
+    context.registerContextModifier(add_summary_to_context);
+
+    log('Extension setup complete.');
   } catch (err) {
     error(`Setup failed: ${err.message}`);
   }
 }
 
-// Module exports
-
+setup();

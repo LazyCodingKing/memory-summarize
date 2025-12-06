@@ -1,7 +1,7 @@
 <div id="memory-summarize-settings" class="memory-summarize-content">
   <div class="memory-summarize-panel">
     <h3>🧠 Memory Summarize Settings</h3>
-    
+
     <!-- Enable/Disable -->
     <div class="settings-row">
       <label for="ms-enabled">
@@ -23,9 +23,9 @@
       <label for="ms-length">
         Summary Length:
         <select id="ms-length" class="settings-input">
-          <option value="short">Short (30%)</option>
-          <option value="medium" selected>Medium (50%)</option>
-          <option value="long">Long (70%)</option>
+          <option value="short">Short (~100 words)</option>
+          <option value="medium" selected>Medium (~200 words)</option>
+          <option value="long">Long (~300 words)</option>
         </select>
       </label>
     </div>
@@ -44,6 +44,23 @@
         Auto-Summarize Interval (minutes):
         <input type="number" id="ms-update-interval" class="settings-input" value="5" min="1" max="60">
       </label>
+    </div>
+
+    <!-- API Endpoint -->
+    <hr>
+    <div class="settings-row">
+        <label for="ms-api-endpoint">
+            API Endpoint:
+            <input type="text" id="ms-api-endpoint" class="settings-input" placeholder="http://127.0.0.1:5000/api/v1/generate">
+        </label>
+    </div>
+
+    <!-- API Key -->
+    <div class="settings-row">
+        <label for="ms-api-key">
+            API Key (Optional):
+            <input type="text" id="ms-api-key" class="settings-input" placeholder="Your API key">
+        </label>
     </div>
 
     <!-- Buttons -->
