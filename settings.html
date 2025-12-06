@@ -1,7 +1,7 @@
 <div class="titan-panel">
-    <h3>🛡️ Titan Memory v3 (Integrated)</h3>
+    <h3>🛡️ Titan Memory v4 (Legacy Core)</h3>
     <div class="titan-desc">
-        Uses your main SillyTavern connection. No API configuration required.
+        Architecture adapted from Qvink for maximum compatibility.
     </div>
     <hr>
 
@@ -18,15 +18,16 @@
     </div>
     <div class="titan-desc">Set to <b>1</b> to summarize after every reply.</div>
 
-    <div class="titan-section-title">Visuals & Context</div>
+    <div class="titan-section-title">Context & Visuals</div>
     <div class="titan-row">
-        <span>Show Memory in Chat</span>
+        <span>Show Memory in Chat (Qvink Style)</span>
         <input type="checkbox" id="titan-show-visuals" style="width: 18px; height: 18px;">
     </div>
     <div class="titan-row">
         <span>Active Pruning (Reduce Tokens)</span>
         <input type="checkbox" id="titan-pruning" style="width: 18px; height: 18px;">
     </div>
+    <div class="titan-desc">Hides old messages from the AI once they are summarized.</div>
 
     <!-- Prompt Editor -->
     <div class="titan-section-title">Summary Prompt Template</div>
@@ -38,9 +39,9 @@
     <textarea id="titan-memory-text" class="titan-textarea" style="min-height: 150px;"></textarea>
     
     <div class="titan-row" style="margin-top: 10px;">
-        <button id="titan-save" class="titan-btn">💾 Save Memory</button>
-        <button id="titan-now" class="titan-btn">⚡ Summarize Now</button>
-        <button id="titan-wipe" class="titan-btn red">🗑️ Wipe All</button>
+        <button id="titan-save" class="titan-btn">💾 Save</button>
+        <button id="titan-now" class="titan-btn">⚡ Force Update</button>
+        <button id="titan-wipe" class="titan-btn red">🗑️ Wipe</button>
     </div>
 
     <!-- Status -->

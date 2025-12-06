@@ -25,7 +25,6 @@ const defaults = {
     threshold: 1,
     show_visuals: true,
     pruning_enabled: true,
-    pruning_buffer: 2, 
     prompt_template: DEFAULT_PROMPT,
     debug: true
 };
@@ -65,7 +64,7 @@ function updateUI() {
     }
 }
 
-// --- Visual Injection ---
+// --- Visual Injection (Qvink Style) ---
 function renderVisuals(errorMsg = null) {
     if (!settings.enabled || !settings.show_visuals) {
         $('.titan-chat-node').remove();
@@ -77,26 +76,82 @@ function renderVisuals(errorMsg = null) {
     const lastMsg = chat.children('.mes').last();
     if (lastMsg.length === 0) return;
 
-    $('.titan-chat-node').remove();
-
-    let html = '';
-    if (errorMsg) {
-        html = `<div class="titan-chat-node error">
-            <div class="titan-chat-header"><i class="fa-solid fa-triangle-exclamation"></i> Memory Error</div>
-            <div class="titan-memory-content">${errorMsg}</div></div>`;
-    } else if (isProcessing) {
-        html = `<div class="titan-chat-node">
-            <div class="titan-chat-header"><i class="fa-solid fa-spinner fa-spin"></i> Updating Memory...</div></div>`;
-    } else if (meta.summary) {
-        html = `<div class="titan-chat-node">
-            <div class="titan-chat-header"><i class="fa-solid fa-brain"></i> Current Memory</div>
-            <div class="titan-memory-content" style="white-space: pre-wrap;">${meta.summary}</div></div>`;
+    // Only add if it's not already there
+    if (lastMsg.find('.titan-chat-node').length === 0) {
+        $('.titan-chat-node').remove(); // Clean old ones
+        
+        let html = '';
+        if (errorMsg) {
+            html = `<div class="titan-chat-node error">
+                <div class="titan-chat-header"><i class="fa-solid fa-triangle-exclamation"></i> Memory Error</div>
+                <div class="titan-memory-content">${errorMsg}</div></div>`;
+        } else if (isProcessing) {
+            html = `<div class="titan-chat-node">
+                <div class="titan-chat-header"><i class="fa-solid fa-spinner fa-spin"></i> Updating Memory...</div></div>`;
+        } else if (meta.summary) {
+            html = `<div class="titan-chat-node">
+                <div class="titan-chat-header"><i class="fa-solid fa-brain"></i> Current Memory</div>
+                <div class="titan-memory-content" style="white-space: pre-wrap;">${meta.summary}</div></div>`;
+        }
+        if (html) lastMsg.find('.mes_text').append(html);
+    } else {
+        // Just update text
+        if (isProcessing) return; // Don't overwrite spinner
+        if (meta.summary) lastMsg.find('.titan-memory-content').text(meta.summary);
     }
-
-    if (html) lastMsg.find('.mes_text').append(html);
 }
 
-// --- The Core: Summarizer (Integrated Mode) ---
+// --- Injection Logic (Qvink Method) ---
+// Instead of ContextProcessor, we use setExtensionPrompt which works on all versions
+function refreshMemoryInjection() {
+    const ctx = getContext();
+    const meta = getMeta();
+    
+    if (!settings.enabled || !meta.summary) {
+        ctx.setExtensionPrompt(`${MODULE}_injection`, '');
+        return;
+    }
+
+    const injectionText = `[System Note - Story Memory]:\n${meta.summary}`;
+    
+    // Inject into System Prompt (Role 0), Depth 0 (Top)
+    // extensionName, text, position, depth, scan, role
+    ctx.setExtensionPrompt(`${MODULE}_injection`, injectionText, 0, 0, true, 0);
+}
+
+// --- Pruning Logic (Interceptor Method) ---
+// This function MUST be global, matching the manifest.json "generate_interceptor"
+globalThis.titan_intercept_messages = function (chat, contextSize) {
+    if (!settings.enabled || !settings.pruning_enabled) return;
+
+    const meta = getMeta();
+    const lastIndex = meta.last_index || 0;
+    
+    // Safety buffer: keep the last few messages visible even if summarized
+    const buffer = 4;
+    const pruneLimit = lastIndex - buffer;
+
+    if (pruneLimit > 0) {
+        const ctx = getContext();
+        const IGNORE = ctx.symbols.ignore; // Gets the ignore symbol for this ST version
+
+        // Iterate backwards from the cut point
+        // Note: 'chat' here is a copy passed by ST, but we need to modify it or the original
+        // The interceptor modifies the array passed to it in-place.
+        
+        for (let i = 0; i < chat.length; i++) {
+            // Because chat passed to interceptor might be partial, we rely on logic
+            // If this message index is older than our limit
+            if (i < pruneLimit) {
+                // Set the ignore symbol
+                if (!chat[i][IGNORE]) chat[i][IGNORE] = true;
+            }
+        }
+        // log(`Pruned ${pruneLimit} messages from context.`);
+    }
+};
+
+// --- Summarizer ---
 async function runSummarization() {
     if (isProcessing) return;
     const ctx = getContext();
@@ -107,13 +162,12 @@ async function runSummarization() {
     const lastIndex = meta.last_index || 0;
     
     if (lastIndex >= chat.length) {
-        $('#titan-status').text("No new messages to summarize.");
         return;
     }
 
     isProcessing = true;
     renderVisuals();
-    $('#titan-status').text('Generating summary using Main API...');
+    $('#titan-status').text('Generating summary...');
 
     try {
         const newLines = chat.slice(lastIndex).map(m => `${m.name}: ${m.mes}`).join('\n');
@@ -123,17 +177,15 @@ async function runSummarization() {
         promptText = promptText.replace('{{EXISTING}}', existingMemory);
         promptText = promptText.replace('{{NEW_LINES}}', newLines);
 
-        // --- THE QVINK METHOD: USE INTERNAL GENERATION ---
-        // This uses whatever settings you have in SillyTavern (OpenAI, Ooba, etc.)
+        // Uses Qvink's generateRaw method - Universal Compatibility
         const result = await generateRaw(promptText, {
-            max_length: 600,       // Max tokens for summary
+            max_length: 600,
             stop: ["INSTRUCTION:", "RECENT CONVERSATION:", "UPDATED MEMORY:"],
             temperature: 0.5,
-            skip_w_info: true,     // Don't inject World Info into the summary prompt
-            include_jailbreak: false
+            skip_w_info: true
         });
 
-        if (!result) throw new Error("Main API returned empty text");
+        if (!result) throw new Error("API returned empty text");
 
         let cleanResult = result.trim();
 
@@ -142,33 +194,19 @@ async function runSummarization() {
             last_index: chat.length
         });
 
-        $('#titan-status').text('Summary updated.');
         updateUI();
-        isProcessing = false;
-        renderVisuals();
-
+        refreshMemoryInjection(); // Push to context immediately
+        
     } catch (e) {
         err(e);
-        isProcessing = false;
         $('#titan-status').text(`Error: ${e.message}`).addClass('error');
         renderVisuals(`Failed: ${e.message}`);
+    } finally {
+        isProcessing = false;
+        $('#titan-status').text('Ready.');
+        renderVisuals();
     }
 }
-
-// --- Context Processor: Injection ---
-const titanProcessor = (data) => {
-    if (!settings.enabled) return;
-    const meta = getMeta();
-    if (!meta.summary) return;
-
-    const summaryMsg = {
-        is_system: true,
-        mes: `[System Note: Long-term memory]\n${meta.summary}`,
-        send_as: 'system',
-        force_avatar: 'system'
-    };
-    data.chat.unshift(summaryMsg);
-};
 
 // --- Event Handlers ---
 function onNewMessage() {
@@ -178,28 +216,14 @@ function onNewMessage() {
     const lastIndex = meta.last_index || 0;
     const currentCount = ctx.chat.length;
 
-    // Pruning (Token Saving)
-    if (settings.pruning_enabled && lastIndex > 0) {
-        const IGNORE = ctx.symbols.ignore;
-        const buffer = settings.pruning_buffer || 2;
-        const pruneLimit = lastIndex - buffer;
-
-        if (pruneLimit > 0) {
-            for (let i = 0; i < pruneLimit; i++) {
-                if (!ctx.chat[i][IGNORE]) ctx.chat[i][IGNORE] = true;
-            }
-        }
-    }
-
-    // Trigger
+    // Trigger Check
     const diff = currentCount - lastIndex;
     if (diff >= settings.threshold) {
-        log(`Threshold reached. Summarizing.`);
         runSummarization();
     } else {
+        refreshMemoryInjection();
         renderVisuals();
     }
-    
     updateUI();
 }
 
@@ -208,7 +232,7 @@ function setupUI() {
         const el = $(`#${id}`);
         if (type === 'check') {
             el.prop('checked', settings[key]);
-            el.on('change', () => { settings[key] = el.prop('checked'); saveSettings(); renderVisuals(); });
+            el.on('change', () => { settings[key] = el.prop('checked'); saveSettings(); refreshMemoryInjection(); renderVisuals(); });
         } else {
             el.val(settings[key]);
             el.on('change', () => { settings[key] = (type==='num' ? Number(el.val()) : el.val()); saveSettings(); });
@@ -227,8 +251,9 @@ function setupUI() {
 
     $('#titan-save').on('click', () => {
         setMeta({ summary: $('#titan-memory-text').val() });
-        $('#titan-status').text('Memory manually updated.');
+        refreshMemoryInjection();
         renderVisuals();
+        $('#titan-status').text('Saved.');
     });
 
     $('#titan-now').on('click', runSummarization);
@@ -236,12 +261,9 @@ function setupUI() {
     $('#titan-wipe').on('click', () => {
         if(confirm("Delete all memory?")) {
             setMeta({ summary: '', last_index: 0 });
-            const ctx = getContext();
-            const IGNORE = ctx.symbols.ignore;
-            ctx.chat.forEach(m => delete m[IGNORE]);
-            updateUI();
+            refreshMemoryInjection();
             renderVisuals(); 
-            $('#titan-status').text('Memory wiped.');
+            updateUI();
         }
     });
 }
@@ -262,18 +284,22 @@ async function init() {
     setupUI();
 
     const ctx = getContext();
+    
+    // Main Hooks
     ctx.eventSource.on('chat:new-message', onNewMessage);
-    ctx.eventSource.on('chat_message_rendered', () => setTimeout(renderVisuals, 100));
+    
+    // Ensure visuals stick when ST redraws chat
+    ctx.eventSource.on('chat_message_rendered', () => {
+        setTimeout(renderVisuals, 50);
+    });
     
     ctx.eventSource.on('chat_loaded', () => { 
         updateUI(); 
-        onNewMessage(); 
+        refreshMemoryInjection(); 
         setTimeout(renderVisuals, 500); 
     });
 
-    ctx.contextProcessors.push(titanProcessor);
-
-    log('Titan Memory v3 (Integrated) Loaded.');
+    log('Titan Memory v4 (Legacy Core) Loaded.');
 }
 
 init();
