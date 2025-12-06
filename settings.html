@@ -1,6 +1,6 @@
 <div class="titan-panel">
-    <h3>🛡️ Titan Memory v2</h3>
-    <div class="titan-desc">Rolling summarization with token pruning and custom prompts.</div>
+    <h3>🛡️ Titan Memory v2.1</h3>
+    <div class="titan-desc">Rolling summarization with visual context.</div>
 
     <!-- Toggle & API -->
     <div class="titan-row">
@@ -17,24 +17,28 @@
     </div>
 
     <!-- Thresholds -->
-    <div class="titan-section-title">Trigger & Pruning</div>
+    <div class="titan-section-title">Triggers</div>
     <div class="titan-row">
         <span>Summarize every N messages:</span>
-        <input type="number" id="titan-threshold" class="titan-input" style="max-width: 60px;" min="5">
+        <!-- Changed min to 1 to allow "Every Message" -->
+        <input type="number" id="titan-threshold" class="titan-input" style="max-width: 60px;" min="1">
     </div>
+    <div class="titan-desc">Set to <b>1</b> to summarize after every reply.</div>
+
+    <div class="titan-section-title">Visuals & Context</div>
+    <div class="titan-row">
+        <span>Show Memory in Chat</span>
+        <input type="checkbox" id="titan-show-visuals" style="width: 18px; height: 18px;">
+    </div>
+    <div class="titan-desc">Displays the current memory block at the bottom of the latest message.</div>
+
     <div class="titan-row">
         <span>Active Pruning (Reduce Tokens)</span>
         <input type="checkbox" id="titan-pruning" style="width: 18px; height: 18px;">
     </div>
-    <div class="titan-desc">
-        If checked, messages that have been summarized will be hidden from the AI to save tokens.
-    </div>
 
     <!-- Prompt Editor -->
     <div class="titan-section-title">Summary Prompt Template</div>
-    <div class="titan-desc">
-        Use <code>{{EXISTING}}</code> for current memory and <code>{{NEW_LINES}}</code> for recent chat.
-    </div>
     <textarea id="titan-prompt-template" class="titan-textarea"></textarea>
     <button id="titan-reset-prompt" class="titan-btn" style="margin-top:5px; width:auto; font-size:0.8em;">Reset to Default</button>
 

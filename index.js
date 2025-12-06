@@ -1,7 +1,7 @@
 import { getContext, extension_settings, saveMetadataDebounced } from '../../../extensions.js';
 import { saveSettingsDebounced } from '../../../../script.js';
 
-const MODULE = 'titan-memory';
+const MODULE = 'memory-summarize'; // Kept same folder name for compatibility
 
 // --- Defaults ---
 const DEFAULT_PROMPT = `You are a helpful AI assistant managing the long-term memory of a story.
@@ -25,9 +25,10 @@ const defaults = {
     enabled: true,
     api_url: 'http://127.0.0.1:5000/api/v1/generate',
     api_key: '',
-    threshold: 20, // messages
+    threshold: 5, // Default to 5, user can set to 1
+    show_visuals: true, // Show in chat by default
     pruning_enabled: true,
-    pruning_buffer: 4, // Keep this many messages visible even if summarized, for continuity
+    pruning_buffer: 2, 
     prompt_template: DEFAULT_PROMPT,
     debug: false
 };
@@ -54,9 +55,11 @@ const setMeta = (data) => {
 // --- UI Updates ---
 function updateUI() {
     const meta = getMeta();
-    $('#titan-memory-text').val(meta.summary || '');
+    if (!$('#titan-memory-text').is(':focus')) {
+        $('#titan-memory-text').val(meta.summary || '');
+    }
     
-    // Stats in status bar
+    // Status
     const ctx = getContext();
     if (ctx.character) {
         const lastIndex = meta.last_index || 0;
@@ -64,6 +67,46 @@ function updateUI() {
         const pending = Math.max(0, count - lastIndex);
         $('#titan-status').text(`Status: Ready. ${pending} new messages pending summary.`);
     }
+}
+
+// --- Visual Injection (The "Qvink" Style Display) ---
+function renderVisuals() {
+    if (!settings.enabled || !settings.show_visuals) {
+        $('.titan-chat-node').remove();
+        return;
+    }
+
+    const meta = getMeta();
+    if (!meta.summary) return;
+
+    // We only want to show this on the very last message of the chat
+    const chat = $('#chat');
+    const lastMsg = chat.children('.mes').last();
+    
+    if (lastMsg.length === 0) return;
+
+    // Check if we already injected into this specific message
+    if (lastMsg.find('.titan-chat-node').length > 0) {
+        // Update text if it exists
+        lastMsg.find('.titan-memory-content').text(meta.summary);
+        return;
+    }
+
+    // Remove from previous messages to avoid clutter
+    $('.titan-chat-node').remove();
+
+    // Create the HTML
+    const html = `
+        <div class="titan-chat-node">
+            <div class="titan-chat-header">
+                <i class="fa-solid fa-brain"></i> Current Memory
+            </div>
+            <div class="titan-memory-content" style="white-space: pre-wrap;">${meta.summary}</div>
+        </div>
+    `;
+
+    // Append to message content
+    lastMsg.find('.mes_text').append(html);
 }
 
 // --- The Core: Summarizer ---
@@ -76,7 +119,6 @@ async function runSummarization() {
     const chat = ctx.chat;
     const lastIndex = meta.last_index || 0;
     
-    // Validation
     if (lastIndex >= chat.length) {
         $('#titan-status').text("No new messages to summarize.");
         return;
@@ -84,19 +126,24 @@ async function runSummarization() {
 
     isProcessing = true;
     $('#titan-now').prop('disabled', true).text('Working...');
-    $('#titan-status').text('Generating summary... please wait.');
+    $('#titan-status').text('Generating summary...');
+
+    // Show visual indicator in chat
+    if (settings.show_visuals) {
+        const lastMsg = $('#chat').children('.mes').last();
+        if (lastMsg.find('.titan-loading').length === 0) {
+             lastMsg.find('.mes_text').append(`<div class="titan-chat-node titan-loading"><i class="fa-solid fa-spinner fa-spin"></i> Updating Memory...</div>`);
+        }
+    }
 
     try {
-        // 1. Gather Data
         const newLines = chat.slice(lastIndex).map(m => `${m.name}: ${m.mes}`).join('\n');
         const existingMemory = meta.summary || "No history yet.";
         
-        // 2. Prepare Prompt
         let prompt = settings.prompt_template;
         prompt = prompt.replace('{{EXISTING}}', existingMemory);
         prompt = prompt.replace('{{NEW_LINES}}', newLines);
 
-        // 3. Call API
         const response = await fetch(settings.api_url, {
             method: 'POST',
             headers: {
@@ -108,20 +155,18 @@ async function runSummarization() {
                 max_new_tokens: 600,
                 temperature: 0.7,
                 top_p: 0.9,
-                stop: ["INSTRUCTION:", "NEW CONVERSATION:"]
+                stop: ["INSTRUCTION:", "NEW CONVERSATION:", "UPDATED MEMORY:"]
             })
         });
 
         if (!response.ok) throw new Error(`API returned ${response.status}`);
         const data = await response.json();
         
-        // Handle different API output formats (Ooba/Kobold/OpenAI)
         let result = data.results?.[0]?.text || data.choices?.[0]?.text || data.choices?.[0]?.message?.content || "";
         result = result.trim();
 
         if (!result) throw new Error("Empty response from API");
 
-        // 4. Save
         setMeta({
             summary: result,
             last_index: chat.length
@@ -129,9 +174,14 @@ async function runSummarization() {
 
         $('#titan-status').text('Summary updated successfully!');
         updateUI();
+        
+        // Re-render visuals immediately with new text
+        $('.titan-loading').remove();
+        renderVisuals();
 
     } catch (e) {
         err(e);
+        $('.titan-loading').remove();
         $('#titan-status').text(`Error: ${e.message}`).addClass('error');
     } finally {
         isProcessing = false;
@@ -139,52 +189,22 @@ async function runSummarization() {
     }
 }
 
-// --- Context Processor: Token Reduction & Injection ---
-// This runs before every generation to modify what the AI sees
+// --- Context Processor: Injection ---
 const titanProcessor = (data) => {
     if (!settings.enabled) return;
     const meta = getMeta();
     if (!meta.summary) return;
 
-    // 1. INJECT MEMORY
-    // We add a high-priority system message with the summary
     const summaryMsg = {
         is_system: true,
-        mes: `[Story Summary / Long Term Memory]:\n${meta.summary}`,
+        mes: `[System Note: Long-term memory of previous events]\n${meta.summary}`,
         send_as: 'system',
-        force_avatar: 'system' // Helper for some UIs
+        force_avatar: 'system'
     };
-    // Insert at index 0 (top of context)
     data.chat.unshift(summaryMsg);
-
-
-    // 2. PRUNE OLD MESSAGES (Token Saving)
-    if (settings.pruning_enabled && meta.last_index) {
-        const buffer = settings.pruning_buffer || 4;
-        
-        // meta.last_index is the index in the REAL chat array (ctx.chat)
-        // data.chat is the array being prepared for the AI (which we just unshifted)
-        
-        // We need to mark messages as "hidden" in the real context if we want to save tokens.
-        // However, ContextProcessors receive a copy. Modifying 'data.chat' only affects this request.
-        
-        // Logic: We want to remove messages from `data.chat` that represent 
-        // the history already covered by the summary, EXCEPT the last 'buffer' messages.
-        
-        // We can't rely on indices matching perfectly because `data.chat` might contain 
-        // World Info injections or other extension data.
-        
-        // Reliable method: Iterate the chat provided by ST and filter based on content hash? Too slow.
-        // Best approximation: Remove N messages from the start of the user/character conversation.
-        
-        // Let's use the `onMessageReceived` hook to permanently mark messages as ignored 
-        // in the main array, which is safer and cleaner for ST.
-    }
 };
 
 // --- Event Handlers ---
-
-// Checks if we should summarize or prune
 function onNewMessage() {
     if (!settings.enabled) return;
     const ctx = getContext();
@@ -192,26 +212,20 @@ function onNewMessage() {
     const lastIndex = meta.last_index || 0;
     const currentCount = ctx.chat.length;
 
-    // 1. Check Pruning (Token Reduction)
+    // 1. Pruning
     if (settings.pruning_enabled && lastIndex > 0) {
-        const IGNORE = ctx.symbols.ignore; // The magic symbol that hides tokens
-        const buffer = settings.pruning_buffer || 4;
-        const pruneLimit = lastIndex - buffer; // Keep a few overlap messages
+        const IGNORE = ctx.symbols.ignore;
+        const buffer = settings.pruning_buffer || 2;
+        const pruneLimit = lastIndex - buffer;
 
         if (pruneLimit > 0) {
-            let pruned = 0;
             for (let i = 0; i < pruneLimit; i++) {
-                // If it's not already ignored, ignore it
-                if (!ctx.chat[i][IGNORE]) {
-                    ctx.chat[i][IGNORE] = true;
-                    pruned++;
-                }
+                if (!ctx.chat[i][IGNORE]) ctx.chat[i][IGNORE] = true;
             }
-            if (pruned > 0) log(`Pruned ${pruned} messages to save tokens.`);
         }
     }
 
-    // 2. Check Trigger
+    // 2. Trigger
     const diff = currentCount - lastIndex;
     if (diff >= settings.threshold) {
         log(`Threshold reached (${diff}/${settings.threshold}). Summarizing.`);
@@ -219,15 +233,17 @@ function onNewMessage() {
     }
     
     updateUI();
+    
+    // 3. Render Visuals (Delay slightly to ensure DOM is ready)
+    setTimeout(renderVisuals, 100);
 }
 
 function setupUI() {
-    // Toggles & Inputs
     const bind = (id, key, type='text') => {
         const el = $(`#${id}`);
         if (type === 'check') {
             el.prop('checked', settings[key]);
-            el.on('change', () => { settings[key] = el.prop('checked'); saveSettings(); });
+            el.on('change', () => { settings[key] = el.prop('checked'); saveSettings(); renderVisuals(); });
         } else {
             el.val(settings[key]);
             el.on('change', () => { settings[key] = (type==='num' ? Number(el.val()) : el.val()); saveSettings(); });
@@ -235,13 +251,13 @@ function setupUI() {
     };
 
     bind('titan-enabled', 'enabled', 'check');
+    bind('titan-show-visuals', 'show_visuals', 'check');
     bind('titan-pruning', 'pruning_enabled', 'check');
     bind('titan-api', 'api_url');
     bind('titan-key', 'api_key');
     bind('titan-threshold', 'threshold', 'num');
     bind('titan-prompt-template', 'prompt_template');
 
-    // Buttons
     $('#titan-reset-prompt').on('click', () => {
         $('#titan-prompt-template').val(DEFAULT_PROMPT).trigger('change');
     });
@@ -249,6 +265,7 @@ function setupUI() {
     $('#titan-save').on('click', () => {
         setMeta({ summary: $('#titan-memory-text').val() });
         $('#titan-status').text('Memory manually updated.');
+        renderVisuals();
     });
 
     $('#titan-now').on('click', runSummarization);
@@ -256,12 +273,12 @@ function setupUI() {
     $('#titan-wipe').on('click', () => {
         if(confirm("Delete all memory for this character?")) {
             setMeta({ summary: '', last_index: 0 });
-            // Un-hide all messages
             const ctx = getContext();
             const IGNORE = ctx.symbols.ignore;
             ctx.chat.forEach(m => delete m[IGNORE]);
             updateUI();
-            $('#titan-status').text('Memory wiped and context restored.');
+            renderVisuals(); // Will remove the box
+            $('#titan-status').text('Memory wiped.');
         }
     });
 }
@@ -272,10 +289,8 @@ function saveSettings() {
 }
 
 async function init() {
-    // Load Settings
     settings = { ...defaults, ...(extension_settings[MODULE] || {}) };
 
-    // HTML
     const url = new URL(import.meta.url);
     const path = url.pathname.substring(0, url.pathname.lastIndexOf('/'));
     const html = await (await fetch(`${path}/settings.html`)).text();
@@ -283,15 +298,20 @@ async function init() {
 
     setupUI();
 
-    // Hooks
     const ctx = getContext();
     ctx.eventSource.on('chat:new-message', onNewMessage);
-    ctx.eventSource.on('chat_loaded', () => { updateUI(); onNewMessage(); }); // Run check on load
+    // Also listen for message render to inject visuals
+    ctx.eventSource.on('chat_message_rendered', () => setTimeout(renderVisuals, 50));
     
-    // Processor (Injection)
+    ctx.eventSource.on('chat_loaded', () => { 
+        updateUI(); 
+        onNewMessage(); 
+        setTimeout(renderVisuals, 500); 
+    });
+
     ctx.contextProcessors.push(titanProcessor);
 
-    log('Titan Memory v2 Loaded.');
+    log('Titan Memory v2.1 Loaded.');
 }
 
 init();

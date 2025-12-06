@@ -63,3 +63,25 @@
     font-size: 0.9rem;
 }
 .titan-status.error { background: rgba(255, 0, 0, 0.1); border-left-color: red; }
+
+/* --- NEW: In-Chat Visuals --- */
+.titan-chat-node {
+    margin-top: 10px;
+    padding: 10px;
+    border-top: 1px solid var(--smart-theme-border);
+    background-color: rgba(0, 0, 0, 0.1);
+    border-radius: 5px;
+    font-size: 0.85em;
+    color: var(--smart-theme-text-main);
+    opacity: 0.9;
+}
+.titan-chat-header {
+    font-weight: bold;
+    font-size: 0.8em;
+    text-transform: uppercase;
+    opacity: 0.6;
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
